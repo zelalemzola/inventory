@@ -11,6 +11,14 @@ import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { AlertCircle, CheckCircle, XCircle } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { Loader2 } from "lucide-react"
 
 type SaleDetailsProps = {
     id: string
@@ -20,7 +28,9 @@ export function SaleDetails({ id }: SaleDetailsProps) {
     const [sale, setSale] = useState<any>(null)
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState<string | null>(null)
-  
+   
+
+    const [isUpdating, setIsUpdating] = useState(false)
     const router = useRouter()
 
     useEffect(() => {
@@ -60,6 +70,31 @@ export function SaleDetails({ id }: SaleDetailsProps) {
         }
     }
 
+    const handleStatusChange = async (newStatus: string) => {
+        if (sale.status === newStatus) return
+
+        try {
+            setIsUpdating(true)
+            await axios.put(`/api/sales/${sale._id}`, {
+                status: newStatus,
+            })
+
+            toast.success(`Sale status updated to ${newStatus}`)
+
+            // If changing to Completed, show a special message
+            if (newStatus === "Completed" && sale.status === "Pending") {
+                toast.success("Inventory has been updated based on this sale")
+            }
+
+            router.refresh()
+        } catch (error) {
+            console.error("Error updating sale status:", error)
+            toast.error("Failed to update sale status")
+        } finally {
+            setIsUpdating(false)
+        }
+    }
+
     if (loading) {
         return <div className="flex justify-center p-8">Loading sale details...</div>
     }
@@ -90,17 +125,53 @@ export function SaleDetails({ id }: SaleDetailsProps) {
                                     {new Date(sale.date).toLocaleDateString()} at {new Date(sale.date).toLocaleTimeString()}
                                 </CardDescription>
                             </div>
-                            <Badge
-                                className={
-                                    sale.status === "Completed"
-                                        ? "bg-green-100 text-green-800"
-                                        : sale.status === "Pending"
-                                            ? "bg-yellow-100 text-yellow-800"
-                                            : "bg-red-100 text-red-800"
-                                }
-                            >
-                                {sale.status}
-                            </Badge>
+                            <div className="flex items-center gap-2">
+                                <Badge
+                                    variant="outline"
+                                    className={
+                                        sale.status === "Completed"
+                                            ? "bg-green-100 text-green-800 hover:bg-green-100"
+                                            : sale.status === "Pending"
+                                                ? "bg-yellow-100 text-yellow-800 hover:bg-yellow-100"
+                                                : "bg-red-100 text-red-800 hover:bg-red-100"
+                                    }
+                                >
+                                    {sale.status}
+                                </Badge>
+
+                                {sale.status !== "Cancelled" && (
+                                    <DropdownMenu>
+                                        <DropdownMenuTrigger asChild>
+                                            <Button variant="outline" size="sm" disabled={isUpdating}>
+                                                Change Status
+                                                {isUpdating && <Loader2 className="ml-2 h-4 w-4 animate-spin" />}
+                                            </Button>
+                                        </DropdownMenuTrigger>
+                                        <DropdownMenuContent>
+                                            <DropdownMenuLabel>Set Status</DropdownMenuLabel>
+                                            <DropdownMenuItem
+                                                onClick={() => handleStatusChange("Pending")}
+                                                disabled={sale.status === "Pending"}
+                                            >
+                                                Pending
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                                onClick={() => handleStatusChange("Completed")}
+                                                disabled={sale.status === "Completed"}
+                                            >
+                                                Completed
+                                            </DropdownMenuItem>
+                                            <DropdownMenuItem
+                                                onClick={() => handleStatusChange("Cancelled")}
+                                                disabled={sale.status === "Cancelled"}
+                                                className="text-destructive"
+                                            >
+                                                Cancelled
+                                            </DropdownMenuItem>
+                                        </DropdownMenuContent>
+                                    </DropdownMenu>
+                                )}
+                            </div>
                         </div>
                     </CardHeader>
                     <CardContent>
@@ -224,6 +295,15 @@ export function SaleDetails({ id }: SaleDetailsProps) {
                     </CardContent>
                 </Card>
             </div>
+            {sale.status === "Pending" && (
+                <Alert className="mt-4">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Pending Sale</AlertTitle>
+                    <AlertDescription>
+                        This is a pending sale. Inventory will be updated and profit will be calculated when the sale is completed.
+                    </AlertDescription>
+                </Alert>
+            )}
         </div>
     )
 }

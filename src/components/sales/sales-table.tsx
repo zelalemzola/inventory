@@ -31,7 +31,7 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import  {toast}  from "sonner"
+import { toast } from "sonner"
 
 type Sale = {
   _id: string
@@ -141,9 +141,12 @@ export const columns: ColumnDef<Sale>[] = [
             </Badge>
           )}
           {status === "Pending" && (
-            <Badge variant="outline" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
-              Pending
-            </Badge>
+            <div>
+              <Badge variant="outline" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
+                Pending
+              </Badge>
+              <div className="text-xs text-muted-foreground mt-1">Inventory not yet updated</div>
+            </div>
           )}
           {status === "Cancelled" && <Badge variant="destructive">Cancelled</Badge>}
         </div>
@@ -190,12 +193,32 @@ export const columns: ColumnDef<Sale>[] = [
             <DropdownMenuItem onClick={() => window.print()}>Print invoice</DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              className="text-destructive"
               onClick={handleCancelSale}
               disabled={sale.status === "Cancelled"}
+              className="text-destructive"
             >
               Cancel sale
             </DropdownMenuItem>
+            {sale.status === "Pending" && (
+              <DropdownMenuItem
+                onClick={async () => {
+                  if (!confirm("Are you sure you want to complete this sale? This will update inventory.")) return
+
+                  try {
+                    await axios.put(`/api/sales/${sale._id}`, {
+                      status: "Completed",
+                    })
+
+                    toast.success("The sale has been marked as completed and inventory has been updated.")
+                    router.refresh()
+                  } catch (error) {
+                    toast.error("Failed to complete sale. Please try again.")
+                  }
+                }}
+              >
+                Mark as Completed
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       )
@@ -232,7 +255,7 @@ export function SalesTable({ filters = {} }: SalesTableProps) {
     }
 
     fetchSales()
-  }, [filters, toast])
+  }, [filters, toast, router])
 
   const table = useReactTable({
     data: sales,

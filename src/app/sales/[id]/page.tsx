@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     description: "View sale transaction details",
 }
 
-export default function SaleDetailsPage({ params }: { params: { id: string } }) {
+export default function SaleDetailsPage({ params }: { params:any }) {
     return (
         <div className="flex min-h-screen flex-col">
             <div className="border-b">

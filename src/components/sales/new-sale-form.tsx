@@ -31,6 +31,7 @@ const formSchema = z.object({
         required_error: "Please select a payment method.",
     }),
     notes: z.string().optional(),
+    status: z.enum(["Pending", "Completed"]),
 })
 
 type ProductVariant = {
@@ -158,6 +159,7 @@ export function NewSaleForm() {
             date: new Date().toISOString().split("T")[0],
             paymentMethod: "",
             notes: "",
+            status: "Pending",
         },
     })
 
@@ -187,7 +189,11 @@ export function NewSaleForm() {
             // Create the sale
             await axios.post("/api/sales", saleData)
 
-            toast.success("The sale has been created successfully")
+            if (values.status === "Pending") {
+                toast.success("The sale has been created with Pending status. Inventory will be updated when completed.")
+            } else {
+                toast.success("The sale has been created and completed successfully")
+            }
 
             // Redirect to the sales page
             router.push("/sales")
@@ -374,6 +380,28 @@ export function NewSaleForm() {
 
                         <FormField
                             control={form.control}
+                            name="status"
+                            render={({ field }) => (
+                                <FormItem>
+                                    <FormLabel>Status</FormLabel>
+                                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                                        <FormControl>
+                                            <SelectTrigger>
+                                                <SelectValue placeholder="Select status" />
+                                            </SelectTrigger>
+                                        </FormControl>
+                                        <SelectContent>
+                                            <SelectItem value="Pending">Pending</SelectItem>
+                                            <SelectItem value="Completed">Completed</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+
+                        <FormField
+                            control={form.control}
                             name="notes"
                             render={({ field }) => (
                                 <FormItem>
@@ -452,6 +480,8 @@ export function NewSaleForm() {
                                         : totalProfit < 0
                                             ? `This sale will result in a $${Math.abs(totalProfit).toFixed(2)} loss (${Math.abs(profitMargin).toFixed(2)}% negative margin).`
                                             : "This sale will break even with no profit or loss."}
+                                    {form.getValues("status") === "Pending" &&
+                                        " Profit/loss will be calculated when the sale is completed."}
                                 </AlertDescription>
                             </Alert>
                         )}

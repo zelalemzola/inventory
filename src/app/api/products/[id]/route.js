@@ -1,11 +1,11 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import dbConnect from "@/lib/db"
 import Product from "@/models/Product"
 import PriceHistory from "@/models/PriceHistory"
 import StockHistory from "@/models/StockHistory"
 import Notification from "@/models/Notification"
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req, { params }) {
   try {
     await dbConnect()
 
@@ -22,7 +22,7 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   }
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(req, { params }) {
   try {
     await dbConnect()
 
@@ -97,7 +97,7 @@ export async function PUT(req: NextRequest, { params }: { params: { id: string }
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(req, { params }) {
   try {
     await dbConnect()
 

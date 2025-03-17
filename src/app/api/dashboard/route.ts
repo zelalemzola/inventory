@@ -1,6 +1,9 @@
+import { NextResponse } from "next/server"
+
+
+
 import dbConnect from "@/lib/db"
 import Sale from "@/models/Sale"
-import { NextResponse } from "next/server"
 
 export const GET = async () => {
   try {

@@ -4,6 +4,7 @@ import Sale from "@/models/Sale"
 import Product from "@/models/Product"
 import StockHistory from "@/models/StockHistory"
 import Notification from "@/models/Notification"
+import mongoose from "mongoose"
 
 export async function GET(req: NextRequest) {
   try {
@@ -61,185 +62,191 @@ export async function GET(req: NextRequest) {
   }
 }
 
+// Update the POST handler to only reduce inventory when status is "Completed"
+
 export async function POST(req: NextRequest) {
   try {
     await dbConnect()
 
-    const body = await req.json()
-    const { items, ...saleData } = body
+    const data = await req.json()
+    const { items, status, ...saleData } = data
 
-    if (!items || !items.length) {
-      return NextResponse.json({ error: "Sale must include at least one item" }, { status: 400 })
-    }
-
-    // Process each item, update stock, and calculate totals
-    let subtotal = 0
-    const processedItems = []
-
-    for (const item of items) {
-      const product = await Product.findById(item.product)
-
-      if (!product) {
-        return NextResponse.json({ error: `Product with ID ${item.product} not found` }, { status: 404 })
-      }
-
-      // Check if this is a variant
-      if (item.variant) {
-        // Find the variant in the product
-        const variantIndex = product.variants.findIndex((v: any) => v.name === item.variant)
-
-        if (variantIndex === -1) {
-          return NextResponse.json(
-            { error: `Variant ${item.variant} not found for product ${product.name}` },
-            { status: 404 },
-          )
-        }
-
-        const variant = product.variants[variantIndex]
-
-        if (variant.stock < item.quantity) {
-          return NextResponse.json(
-            { error: `Not enough stock for ${product.name} (${variant.name}). Available: ${variant.stock}` },
-            { status: 400 },
-          )
-        }
-
-        // Update variant stock
-        const previousStock = variant.stock
-        variant.stock -= item.quantity
-
-        // Update the variant in the product
-        product.variants[variantIndex] = variant
-
-        // Create stock history record for the variant
-        await StockHistory.create({
-          product: product._id,
-          previousStock,
-          newStock: variant.stock,
-          change: -item.quantity,
-          type: "Sale",
-          notes: `Sold ${item.quantity} units of variant ${variant.name} in sale`,
-        })
-
-        // Create notification if new stock level is low or out
-        if (variant.stock <= 0) {
-          await Notification.create({
-            title: "Out of Stock Alert",
-            message: `${product.name} (${variant.name}) is now out of stock`,
-            type: "Out of Stock",
-            product: product._id,
-          })
-        } else if (variant.stock <= 5) {
-          // Using a default threshold for variants
-          await Notification.create({
-            title: "Low Stock Alert",
-            message: `${product.name} (${variant.name}) is low in stock (${variant.stock} remaining)`,
-            type: "Low Stock",
-            product: product._id,
-          })
-        }
-
-        // Calculate item total
-        const itemTotal = item.price * item.quantity
-        subtotal += itemTotal
-
-        // Add processed item
-        processedItems.push({
-          product: product._id,
-          productName: `${product.name} (${variant.name})`,
-          sku: variant.sku,
-          quantity: item.quantity,
-          price: item.price,
-          cost: variant.cost,
-          total: itemTotal,
-        })
-      } else {
-        // Regular product (not a variant)
-        if (product.stock < item.quantity) {
-          return NextResponse.json(
-            { error: `Not enough stock for ${product.name}. Available: ${product.stock}` },
-            { status: 400 },
-          )
-        }
-
-        // Update product stock
-        const previousStock = product.stock
-        product.stock -= item.quantity
-
-        // Create stock history record
-        await StockHistory.create({
-          product: product._id,
-          previousStock,
-          newStock: product.stock,
-          change: -item.quantity,
-          type: "Sale",
-          notes: `Sold ${item.quantity} units in sale`,
-        })
-
-        // Create notification if new stock level is low or out
-        if (product.stock <= 0) {
-          await Notification.create({
-            title: "Out of Stock Alert",
-            message: `${product.name} is now out of stock`,
-            type: "Out of Stock",
-            product: product._id,
-          })
-        } else if (product.stock <= product.minStockLevel) {
-          await Notification.create({
-            title: "Low Stock Alert",
-            message: `${product.name} is low in stock (${product.stock} remaining)`,
-            type: "Low Stock",
-            product: product._id,
-          })
-        }
-
-        // Calculate item total
-        const itemTotal = item.price * item.quantity
-        subtotal += itemTotal
-
-        // Add processed item
-        processedItems.push({
-          product: product._id,
-          productName: product.name,
-          sku: product.sku,
-          quantity: item.quantity,
-          price: item.price,
-          cost: product.cost,
-          total: itemTotal,
-        })
-      }
-
-      // Save the product with updated stock
-      await product.save()
-    }
-
-    // Calculate tax and total
-    const tax = subtotal * 0.07 // 7% tax rate
-    const total = subtotal + tax
-
-    // Create the sale
+    // Create the sale record
     const sale = new Sale({
       ...saleData,
-      items: processedItems,
-      subtotal,
-      tax,
-      total,
-      profit: 0, // This will be calculated in the pre-save hook
+      items: [], // Initialize items as an empty array, will be populated later if status is completed
+      profit: 0, // Initialize profit, will be calculated in pre-save hook
     })
+
+    // Only update inventory if the sale is completed
+    if (status === "Completed") {
+      let subtotal = 0
+      const processedItems = []
+
+      // Process each item in the sale
+      for (const item of items) {
+        const productId = item.product
+        const variantName = item.variant
+        const quantity = item.quantity
+
+        // Find the product
+        const product = await Product.findById(productId)
+        if (!product) {
+          return NextResponse.json({ error: `Product with ID ${productId} not found` }, { status: 404 })
+        }
+
+        let itemTotal = 0
+
+        // Update stock based on whether it's a variant or main product
+        if (variantName) {
+          // Find the variant
+          const variantIndex = product.variants.findIndex((v) => v.name === variantName)
+          if (variantIndex === -1) {
+            return NextResponse.json(
+              { error: `Variant ${variantName} not found for product ${product.name}` },
+              { status: 404 },
+            )
+          }
+
+          const variant = product.variants[variantIndex]
+
+          if (variant.stock < quantity) {
+            return NextResponse.json(
+              { error: `Not enough stock for ${product.name} (${variant.name}). Available: ${variant.stock}` },
+              { status: 400 },
+            )
+          }
+
+          // Update variant stock
+          const previousStock = variant.stock
+          variant.stock -= quantity
+
+          // Create stock history record for the variant
+          await StockHistory.create({
+            product: productId,
+            previousStock,
+            newStock: variant.stock,
+            change: -quantity,
+            type: "Sale",
+            notes: `Sale ID: ${sale._id}`,
+          })
+
+          // Calculate item total
+          itemTotal = item.price * quantity
+          subtotal += itemTotal
+
+          processedItems.push({
+            product: product._id as mongoose.Types.ObjectId, // Explicitly cast to mongoose.Types.ObjectId
+            productName: `${product.name} (${variant.name})`,
+            sku: variant.sku,
+            quantity: item.quantity,
+            price: item.price,
+            cost: variant.cost,
+            total: itemTotal,
+          })
+
+          product.variants[variantIndex] = variant
+        } else {
+          if (product.stock < quantity) {
+            return NextResponse.json(
+              { error: `Not enough stock for ${product.name}. Available: ${product.stock}` },
+              { status: 400 },
+            )
+          }
+          // Update main product stock
+          const previousStock = product.stock
+          product.stock -= quantity
+
+          // Create stock history record for the main product
+          await StockHistory.create({
+            product: productId,
+            previousStock,
+            newStock: product.stock,
+            change: -quantity,
+            type: "Sale",
+            notes: `Sale ID: ${sale._id}`,
+          })
+
+          // Calculate item total
+          itemTotal = item.price * quantity
+          subtotal += itemTotal
+
+          processedItems.push({
+            product: product._id as mongoose.Types.ObjectId, // Explicitly cast to mongoose.Types.ObjectId
+            productName: product.name,
+            sku: product.sku,
+            quantity: item.quantity,
+            price: item.price,
+            cost: product.cost,
+            total: itemTotal,
+          })
+        }
+
+        // Update product status based on stock levels
+        updateProductStatus(product)
+
+        // Save the updated product
+        await product.save()
+      }
+
+      const tax = subtotal * 0.07 // 7% tax rate
+      const total = subtotal + tax
+
+      sale.items = processedItems
+      sale.subtotal = subtotal
+      sale.tax = tax
+      sale.total = total
+
+      // Create a notification for the completed sale
+      await Notification.create({
+        type: "Sale",
+        title: "New Sale Completed",
+        message: `A new sale of $${total.toFixed(2)} has been completed.`,
+        date: new Date(),
+        read: false,
+      })
+    } else {
+      // Create a notification for the pending sale
+      await Notification.create({
+        type: "Sale",
+        title: "New Pending Sale",
+        message: `A new pending sale of $${data.total.toFixed(2)} has been created.`,
+        date: new Date(),
+        read: false,
+      })
+    }
 
     await sale.save()
 
-    // Create notification for new sale
-    await Notification.create({
-      title: "New Sale",
-      message: `New sale of $${total.toFixed(2)} to ${saleData.customer}`,
-      type: "Sale",
-    })
-
-    return NextResponse.json(sale, { status: 201 })
+    return NextResponse.json({ success: true, sale }, { status: 201 })
   } catch (error) {
     console.error("Error creating sale:", error)
     return NextResponse.json({ error: "Failed to create sale" }, { status: 500 })
+  }
+}
+
+// Helper function to update product status based on stock levels
+function updateProductStatus(product: any) {
+  // Update main product status
+  if (product.stock <= 0) {
+    product.status = "Out of Stock"
+  } else if (product.stock <= product.minStockLevel) {
+    product.status = "Low Stock"
+  } else {
+    product.status = "In Stock"
+  }
+
+  // Update variant statuses
+  if (product.variants && product.variants.length > 0) {
+    product.variants.forEach((variant: any) => {
+      if (variant.stock <= 0) {
+        variant.status = "Out of Stock"
+      } else if (variant.stock <= product.minStockLevel) {
+        variant.status = "Low Stock"
+      } else {
+        variant.status = "In Stock"
+      }
+    })
   }
 }
 

@@ -24,6 +24,7 @@ export interface IProduct extends Document {
   lastRestocked: Date
   createdAt: Date
   updatedAt: Date
+  lowStockThreshold: number // Added lowStockThreshold property
 }
 
 const VariantSchema = new Schema<IVariant>({
@@ -53,6 +54,7 @@ const ProductSchema = new Schema<IProduct>(
     },
     variants: [VariantSchema],
     lastRestocked: { type: Date, default: Date.now },
+    lowStockThreshold: { type: Number, default: 5 }, // Added schema definition
   },
   { timestamps: true },
 )

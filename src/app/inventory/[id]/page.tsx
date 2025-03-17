@@ -16,7 +16,7 @@ export const metadata: Metadata = {
     description: "View and manage product details",
 }
 
-export default function ProductDetailsPage({ params }: { params: { id: string } }) {
+export default function ProductDetailsPage({ params }: { params: any }) {
     return (
         <div className="flex min-h-screen flex-col">
             <div className="border-b">

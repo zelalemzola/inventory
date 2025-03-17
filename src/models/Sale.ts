@@ -8,6 +8,7 @@ export interface ISaleItem {
   price: number
   cost: number
   total: number
+  variant?: string // Added variant property
 }
 
 export interface ISale extends Document {
