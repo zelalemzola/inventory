@@ -1,8 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server"
 import dbConnect from "@/lib/db"
 import Product from "@/models/Product"
-import StockHistory from "@/models/StockHistory"
-import Notification from "@/models/Notification"
 
 export async function GET(req: NextRequest) {
   try {
@@ -10,9 +8,13 @@ export async function GET(req: NextRequest) {
 
     const url = new URL(req.url)
     const searchParams = url.searchParams
+    const name = searchParams.get("name")
     const category = searchParams.get("category")
     const status = searchParams.get("status")
-    const search = searchParams.get("search")
+    const minStock = searchParams.get("minStock")
+    const maxStock = searchParams.get("maxStock")
+    const sortBy = searchParams.get("sortBy") || "name"
+    const sortOrder = searchParams.get("sortOrder") || "asc"
     const limit = Number.parseInt(searchParams.get("limit") || "100")
     const page = Number.parseInt(searchParams.get("page") || "1")
 
@@ -21,24 +23,37 @@ export async function GET(req: NextRequest) {
     // Build query
     const query: any = {}
 
+    if (name) {
+      query.name = { $regex: name, $options: "i" }
+    }
+
     if (category) {
       query.category = category
     }
 
     if (status) {
-      query.status = status
+      // Handle comma-separated status values
+      if (status.includes(",")) {
+        const statusArray = status.split(",").map((s) => s.trim())
+        query.status = { $in: statusArray }
+      } else {
+        query.status = status
+      }
     }
 
-    if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { sku: { $regex: search, $options: "i" } },
-        { description: { $regex: search, $options: "i" } },
-      ]
+    if (minStock) {
+      query.stock = { ...query.stock, $gte: Number.parseInt(minStock) }
     }
 
-    const products = await Product.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit)
+    if (maxStock) {
+      query.stock = { ...query.stock, $lte: Number.parseInt(maxStock) }
+    }
 
+    // Build sort object
+    const sort: any = {}
+    sort[sortBy] = sortOrder === "desc" ? -1 : 1
+
+    const products = await Product.find(query).sort(sort).skip(skip).limit(limit)
     const total = await Product.countDocuments(query)
 
     return NextResponse.json({
@@ -60,38 +75,30 @@ export async function POST(req: NextRequest) {
   try {
     await dbConnect()
 
-    const body = await req.json()
+    const data = await req.json()
 
-    // Create new product
-    const product = new Product(body)
-    await product.save()
-
-    // Create stock history record
-    await StockHistory.create({
-      product: product._id,
-      previousStock: 0,
-      newStock: product.stock,
-      change: product.stock,
-      type: "Initial",
-      notes: "Initial stock on product creation",
-    })
-
-    // Create notification if stock is low or out
-    if (product.status === "Low Stock") {
-      await Notification.create({
-        title: "Low Stock Alert",
-        message: `${product.name} is low in stock (${product.stock} remaining)`,
-        type: "Low Stock",
-        product: product._id,
-      })
-    } else if (product.status === "Out of Stock") {
-      await Notification.create({
-        title: "Out of Stock Alert",
-        message: `${product.name} is out of stock`,
-        type: "Out of Stock",
-        product: product._id,
-      })
+    // Check if SKU already exists
+    const existingSku = await Product.findOne({ sku: data.sku })
+    if (existingSku) {
+      return NextResponse.json({ error: "SKU already exists" }, { status: 400 })
     }
+
+    // If product has variants, calculate stock as sum of variant stocks
+    if (data.variants && data.variants.length > 0) {
+      data.stock = data.variants.reduce((total: number, variant: any) => total + (variant.stock || 0), 0)
+    }
+
+    // Set status based on stock level
+    if (data.stock <= 0) {
+      data.status = "Out of Stock"
+    } else if (data.stock <= data.minStockLevel) {
+      data.status = "Low Stock"
+    } else {
+      data.status = "In Stock"
+    }
+
+    // Create the product
+    const product = await Product.create(data)
 
     return NextResponse.json(product, { status: 201 })
   } catch (error) {

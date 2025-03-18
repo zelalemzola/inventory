@@ -2,15 +2,18 @@ import {  NextResponse } from "next/server"
 import dbConnect from "@/lib/db"
 import Sale from "@/models/Sale"
 import Product from "@/models/Product"
-import StockHistory from "@/models/StockHistory"
-import Notification from "@/models/Notification"
+import { isValidObjectId } from "mongoose"
 
 export async function GET(req, { params }) {
   try {
     await dbConnect()
 
-    const sale = await Sale.findById(params.id)
+    const id = params.id
+    if (!isValidObjectId(id)) {
+      return NextResponse.json({ error: "Invalid sale ID" }, { status: 400 })
+    }
 
+    const sale = await Sale.findById(id).populate("customer", "name email")
     if (!sale) {
       return NextResponse.json({ error: "Sale not found" }, { status: 404 })
     }
@@ -26,107 +29,36 @@ export async function PUT(req, { params }) {
   try {
     await dbConnect()
 
-    const { id } = params
+    const id = params.id
+    if (!isValidObjectId(id)) {
+      return NextResponse.json({ error: "Invalid sale ID" }, { status: 400 })
+    }
+
     const data = await req.json()
 
-    // Get the current sale to check if status is changing
-    const currentSale = await Sale.findById(id).populate("items.product")
+    // Get the current sale to check status change
+    const currentSale = await Sale.findById(id)
     if (!currentSale) {
       return NextResponse.json({ error: "Sale not found" }, { status: 404 })
     }
 
-    // Check if status is changing from Pending to Completed
-    const statusChangingToCompleted = currentSale.status === "Pending" && data.status === "Completed"
-
-    // Update the sale
-    const updatedSale = await Sale.findByIdAndUpdate(id, data, { new: true }).populate("items.product")
-
-    // If status is changing from Pending to Completed, update inventory
-    if (statusChangingToCompleted) {
-      // Get the items from the sale
-      const items = currentSale.items
-
-      // Process each item in the sale
-      for (const item of items) {
-        const productId = item.product._id
-        const variantName = item.variant
-        const quantity = item.quantity
-
-        // Find the product
-        const product = await Product.findById(productId)
-        if (!product) {
-          continue // Skip if product not found
-        }
-
-        // Update stock based on whether it's a variant or main product
-        if (variantName) {
-          // Find the variant
-          const variant = product.variants.find((v) => v.name === variantName)
-          if (variant) {
-            // Update variant stock
-            variant.stock -= quantity
-
-            // Create stock history record for the variant
-            await StockHistory.create({
-              product: productId,
-              variant: variantName,
-              change: -quantity,
-              type: "sale",
-              date: new Date(),
-              notes: `Sale ID: ${id} (status changed to Completed)`,
-            })
-          }
-        } else {
-          // Update main product stock
-          product.stock -= quantity
-
-          // Create stock history record for the main product
-          await StockHistory.create({
-            product: productId,
-            change: -quantity,
-            type: "sale",
-            date: new Date(),
-            notes: `Sale ID: ${id} (status changed to Completed)`,
-          })
-        }
-
-        // Update product status based on stock levels
-        if (product.stock <= 0) {
-          product.status = "Out of Stock"
-        } else if (product.stock <= product.lowStockThreshold) {
-          product.status = "Low Stock"
-        } else {
-          product.status = "In Stock"
-        }
-
-        // Update variant statuses
-        if (product.variants && product.variants.length > 0) {
-          product.variants.forEach((variant) => {
-            if (variant.stock <= 0) {
-              variant.status = "Out of Stock"
-            } else if (variant.stock <= product.lowStockThreshold) {
-              variant.status = "Low Stock"
-            } else {
-              variant.status = "In Stock"
-            }
-          })
-        }
-
-        // Save the updated product
-        await product.save()
+    // Handle inventory changes if status is changing
+    if (data.status !== currentSale.status) {
+      // If changing from non-completed to completed, reduce inventory
+      if (data.status === "Completed" && currentSale.status !== "Completed") {
+        await updateInventory(currentSale.items, -1) // Reduce inventory
       }
 
-      // Create a notification for the completed sale
-      await Notification.create({
-        type: "sale",
-        title: "Sale Completed",
-        message: `Sale #${id} has been marked as completed for $${currentSale.total.toFixed(2)}.`,
-        date: new Date(),
-        read: false,
-      })
+      // If changing from completed to non-completed, restore inventory
+      if (data.status !== "Completed" && currentSale.status === "Completed") {
+        await updateInventory(currentSale.items, 1) // Restore inventory
+      }
     }
 
-    return NextResponse.json({ success: true, sale: updatedSale })
+    // Update the sale
+    const sale = await Sale.findByIdAndUpdate(id, data, { new: true, runValidators: true })
+
+    return NextResponse.json(sale)
   } catch (error) {
     console.error("Error updating sale:", error)
     return NextResponse.json({ error: "Failed to update sale" }, { status: 500 })
@@ -137,21 +69,61 @@ export async function DELETE(req, { params }) {
   try {
     await dbConnect()
 
-    const sale = await Sale.findById(params.id)
+    const id = params.id
+    if (!isValidObjectId(id)) {
+      return NextResponse.json({ error: "Invalid sale ID" }, { status: 400 })
+    }
 
+    // Get the sale before deleting to check if we need to restore inventory
+    const sale = await Sale.findById(id)
     if (!sale) {
       return NextResponse.json({ error: "Sale not found" }, { status: 404 })
     }
 
-    // Don't actually delete sales for accounting purposes
-    // Just mark as cancelled
-    sale.status = "Cancelled"
-    await sale.save()
+    // If the sale was completed, restore inventory
+    if (sale.status === "Completed") {
+      await updateInventory(sale.items, 1) // Restore inventory
+    }
 
-    return NextResponse.json({ message: "Sale cancelled successfully" })
+    // Delete the sale
+    await Sale.findByIdAndDelete(id)
+
+    return NextResponse.json({ message: "Sale deleted successfully" })
   } catch (error) {
-    console.error("Error cancelling sale:", error)
-    return NextResponse.json({ error: "Failed to cancel sale" }, { status: 500 })
+    console.error("Error deleting sale:", error)
+    return NextResponse.json({ error: "Failed to delete sale" }, { status: 500 })
+  }
+}
+
+// Helper function to update inventory
+async function updateInventory(items, direction) {
+  for (const item of items) {
+    const quantity = item.quantity * direction // Positive to add, negative to subtract
+
+    if (item.isVariant) {
+      // Update variant stock
+      const parentProduct = await Product.findById(item.parentProductId)
+      if (parentProduct) {
+        const updatedVariants = parentProduct.variants.map((v) => {
+          if (v.sku === item.sku) {
+            return {
+              ...v,
+              stock: Math.max(0, v.stock + quantity),
+            }
+          }
+          return v
+        })
+
+        await Product.findByIdAndUpdate(item.parentProductId, {
+          variants: updatedVariants,
+        })
+      }
+    } else {
+      // Update regular product stock
+      await Product.findByIdAndUpdate(item.productId, {
+        $inc: { stock: quantity },
+      })
+    }
   }
 }
 

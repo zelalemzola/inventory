@@ -159,7 +159,7 @@ export const columns: ColumnDef<Sale>[] = [
     cell: ({ row }) => {
       const sale = row.original
       const router = useRouter()
-      
+  
 
       const handleCancelSale = async () => {
         if (!confirm("Are you sure you want to cancel this sale?")) return

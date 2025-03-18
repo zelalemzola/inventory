@@ -41,6 +41,7 @@ type ProductVariant = {
   price: number
   cost: number
   stock: number
+  minStockLevel?: number
 }
 
 type Product = {
@@ -58,261 +59,17 @@ type Product = {
   parentName?: string
 }
 
-export const columns: ColumnDef<Product>[] = [
-  {
-    accessorKey: "name",
-    header: ({ column }) => {
-      return (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-          Name
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      )
-    },
-    cell: ({ row }) => {
-      const isVariant = row.original.isVariant
-      const parentId = row.original.parentProduct
-      const linkId = isVariant ? parentId : row.original._id
-
-      return (
-        <div className="text-left">
-          <Link href={`/inventory/${linkId}`} className="font-medium hover:underline">
-            {row.getValue("name")}
-          </Link>
-          {isVariant && <div className="text-xs text-muted-foreground">Variant of: {row.original.parentName}</div>}
-        </div>
-      )
-    },
-  },
-  {
-    accessorKey: "category",
-    header: ({ column }) => {
-      return (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-          Category
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      )
-    },
-    cell: ({ row }) => <div className="text-left">{row.getValue("category")}</div>,
-  },
-  {
-    accessorKey: "sku",
-    header: "SKU",
-    cell: ({ row }) => <div className="text-left font-mono text-sm">{row.getValue("sku")}</div>,
-  },
-  {
-    accessorKey: "price",
-    header: ({ column }) => {
-      return (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-          Price
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      )
-    },
-    cell: ({ row }) => {
-      const price = Number.parseFloat(row.getValue("price"))
-      const formatted = new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-      }).format(price)
-      return <div className="text-right font-medium">{formatted}</div>
-    },
-  },
-  {
-    accessorKey: "cost",
-    header: ({ column }) => {
-      return (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-          Cost
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      )
-    },
-    cell: ({ row }) => {
-      const cost = Number.parseFloat(row.getValue("cost"))
-      const formatted = new Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency: "USD",
-      }).format(cost)
-      return <div className="text-right font-medium">{formatted}</div>
-    },
-  },
-  {
-    accessorKey: "stock",
-    header: ({ column }) => {
-      return (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-          Stock
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      )
-    },
-    cell: ({ row }) => {
-      const stock = Number.parseFloat(row.getValue("stock"))
-      const formatted = new Intl.NumberFormat("en-US").format(stock)
-      return <div className="text-center">{formatted}</div>
-    },
-  },
-  {
-    accessorKey: "status",
-    header: ({ column }) => {
-      return (
-        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
-          Status
-          <ArrowUpDown className="ml-2 h-4 w-4" />
-        </Button>
-      )
-    },
-    cell: ({ row }) => {
-      const status = row.getValue("status") as string
-      return (
-        <div className="text-center">
-          {status === "In Stock" && (
-            <Badge variant="outline" className="bg-green-100 text-green-800 hover:bg-green-100">
-              In Stock
-            </Badge>
-          )}
-          {status === "Low Stock" && (
-            <Badge variant="outline" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
-              Low Stock
-            </Badge>
-          )}
-          {status === "Out of Stock" && <Badge variant="destructive">Out of Stock</Badge>}
-        </div>
-      )
-    },
-  },
-  {
-    id: "actions",
-    cell: ({ row }) => {
-      const product = row.original
-      const router = useRouter()
-      
-
-      const handleDelete = async () => {
-        if (!confirm("Are you sure you want to delete this product?")) return
-
-        try {
-          // If it's a variant, we need a different approach
-          if (product.isVariant && product.parentProduct) {
-            // Get the parent product
-            const parentResponse = await axios.get(`/api/products/${product.parentProduct}`)
-            const parentProduct = parentResponse.data
-
-            // Filter out the variant
-            const updatedVariants = parentProduct.variants.filter((v: ProductVariant) => v.sku !== product.sku)
-
-            // Update the parent product
-            await axios.put(`/api/products/${product.parentProduct}`, {
-              ...parentProduct,
-              variants: updatedVariants,
-            })
-
-            toast.success("Variant deleted successfully")
-          } else {
-            // Regular product deletion
-            await axios.delete(`/api/products/${product._id}`)
-            toast.success("Product deleted successfully")
-          }
-
-          router.refresh()
-        } catch (error) {
-          toast.error("Failed to delete product. Please try again.")
-        }
-      }
-
-      const handleRestock = async () => {
-        try {
-          const quantity = prompt("Enter quantity to restock:", "10")
-          if (!quantity) return
-
-          if (product.isVariant && product.parentProduct) {
-            // Get the parent product
-            const parentResponse = await axios.get(`/api/products/${product.parentProduct}`)
-            const parentProduct = parentResponse.data
-
-            // Find and update the variant
-            const updatedVariants = parentProduct.variants.map((v: ProductVariant) => {
-              if (v.sku === product.sku) {
-                return {
-                  ...v,
-                  stock: v.stock + Number.parseInt(quantity),
-                }
-              }
-              return v
-            })
-
-            // Update the parent product
-            await axios.put(`/api/products/${product.parentProduct}`, {
-              ...parentProduct,
-              variants: updatedVariants,
-            })
-          } else {
-            // Regular product restock
-            await axios.post(`/api/products/${product._id}/restock`, {
-              quantity: Number.parseInt(quantity),
-              notes: `Manual restock of ${quantity} units`,
-            })
-          }
-
-          toast.success(`Added ${quantity} units to inventory.`)
-          router.refresh()
-        } catch (error) {
-          toast.error("Failed to restock product. Please try again.")
-        }
-      }
-
-      return (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="h-8 w-8 p-0">
-              <span className="sr-only">Open menu</span>
-              <MoreHorizontal className="h-4 w-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-            <DropdownMenuItem onClick={() => navigator.clipboard.writeText(product._id)}>
-              Copy product ID
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>
-              <Link href={`/inventory/${product.isVariant ? product.parentProduct : product._id}`}>View details</Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem>
-              <Link href={`/inventory/${product.isVariant ? product.parentProduct : product._id}/edit`}>
-                Edit product
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleRestock}>Add stock</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-destructive" onClick={handleDelete}>
-              Delete {product.isVariant ? "variant" : "product"}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      )
-    },
-  },
-]
-
-export interface InventoryTableProps {
-  filters?: Record<string, any>
-}
-
-export function InventoryTable({ filters = {} }: InventoryTableProps) {
+export function InventoryTable({ filters = {} }: { filters?: Record<string, any> }) {
   const [products, setProducts] = React.useState<Product[]>([])
   const [allCategories, setAllCategories] = React.useState<string[]>([])
   const [loading, setLoading] = React.useState(true)
-  const [sorting, setSorting] = React.useState<SortingState>([])
+  const [sorting, setSorting] = React.useState<SortingState>([{ id: "updatedAt", desc: true }]) // Default sort by most recent
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
   const [rowSelection, setRowSelection] = React.useState({})
   const [statusFilter, setStatusFilter] = React.useState<string>("all")
   const [categoryFilter, setCategoryFilter] = React.useState<string>("all")
-  
+ 
   const router = useRouter()
 
   // Fetch all categories
@@ -337,7 +94,7 @@ export function InventoryTable({ filters = {} }: InventoryTableProps) {
         setLoading(true)
 
         // Prepare filters
-        const params = { ...filters }
+        const params: Record<string, any> = { ...filters }
 
         // Add status filter if not "all"
         if (statusFilter !== "all") {
@@ -347,6 +104,16 @@ export function InventoryTable({ filters = {} }: InventoryTableProps) {
         // Add category filter if not "all"
         if (categoryFilter !== "all") {
           params.category = categoryFilter
+        }
+
+        // Add sorting based on current sort state
+        if (sorting.length > 0) {
+          params.sortBy = sorting[0].id
+          params.sortOrder = sorting[0].desc ? "desc" : "asc"
+        } else {
+          // Default sort by updatedAt desc (most recent first)
+          params.sortBy = "updatedAt"
+          params.sortOrder = "desc"
         }
 
         const response = await axios.get("/api/products", { params })
@@ -365,8 +132,7 @@ export function InventoryTable({ filters = {} }: InventoryTableProps) {
               let variantStatus: "In Stock" | "Low Stock" | "Out of Stock" = "In Stock"
               if (variant.stock <= 0) {
                 variantStatus = "Out of Stock"
-              } else if (variant.stock <= 5) {
-                // Using 5 as threshold
+              } else if (variant.stock <= (variant.minStockLevel || 5)) {
                 variantStatus = "Low Stock"
               }
 
@@ -400,7 +166,245 @@ export function InventoryTable({ filters = {} }: InventoryTableProps) {
     }
 
     fetchProducts()
-  }, [filters, statusFilter, categoryFilter, toast])
+  }, [filters, statusFilter, categoryFilter, sorting, toast])
+
+  const columns: ColumnDef<Product>[] = [
+    {
+      accessorKey: "name",
+      header: ({ column }) => {
+        return (
+          <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+            Name
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        )
+      },
+      cell: ({ row }) => {
+        const isVariant = row.original.isVariant
+        const parentId = row.original.parentProduct
+        const linkId = isVariant ? parentId : row.original._id
+
+        return (
+          <div className="text-left">
+            <Link href={`/inventory/${linkId}`} className="font-medium hover:underline">
+              {row.getValue("name")}
+            </Link>
+            {isVariant && <div className="text-xs text-muted-foreground">Variant of: {row.original.parentName}</div>}
+          </div>
+        )
+      },
+    },
+    {
+      accessorKey: "category",
+      header: ({ column }) => {
+        return (
+          <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+            Category
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        )
+      },
+      cell: ({ row }) => <div className="text-left">{row.getValue("category")}</div>,
+    },
+    {
+      accessorKey: "sku",
+      header: "SKU",
+      cell: ({ row }) => <div className="text-left font-mono text-sm">{row.getValue("sku")}</div>,
+    },
+    {
+      accessorKey: "price",
+      header: ({ column }) => {
+        return (
+          <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+            Price
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        )
+      },
+      cell: ({ row }) => {
+        const price = Number.parseFloat(row.getValue("price"))
+        const formatted = new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+        }).format(price)
+        return <div className="text-right font-medium">{formatted}</div>
+      },
+    },
+    {
+      accessorKey: "cost",
+      header: ({ column }) => {
+        return (
+          <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+            Cost
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        )
+      },
+      cell: ({ row }) => {
+        const cost = Number.parseFloat(row.getValue("cost"))
+        const formatted = new Intl.NumberFormat("en-US", {
+          style: "currency",
+          currency: "USD",
+        }).format(cost)
+        return <div className="text-right font-medium">{formatted}</div>
+      },
+    },
+    {
+      accessorKey: "stock",
+      header: ({ column }) => {
+        return (
+          <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+            Stock
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        )
+      },
+      cell: ({ row }) => {
+        const stock = Number.parseFloat(row.getValue("stock"))
+        const formatted = new Intl.NumberFormat("en-US").format(stock)
+        return <div className="text-center">{formatted}</div>
+      },
+    },
+    {
+      accessorKey: "status",
+      header: ({ column }) => {
+        return (
+          <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+            Status
+            <ArrowUpDown className="ml-2 h-4 w-4" />
+          </Button>
+        )
+      },
+      cell: ({ row }) => {
+        const status = row.getValue("status") as string
+        return (
+          <div className="text-center">
+            {status === "In Stock" && (
+              <Badge variant="outline" className="bg-green-100 text-green-800 hover:bg-green-100">
+                In Stock
+              </Badge>
+            )}
+            {status === "Low Stock" && (
+              <Badge variant="outline" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
+                Low Stock
+              </Badge>
+            )}
+            {status === "Out of Stock" && <Badge variant="destructive">Out of Stock</Badge>}
+          </div>
+        )
+      },
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => {
+        const product = row.original
+
+        const handleDelete = async () => {
+          if (!confirm("Are you sure you want to delete this product?")) return
+
+          try {
+            // If it's a variant, we need a different approach
+            if (product.isVariant && product.parentProduct) {
+              // Get the parent product
+              const parentResponse = await axios.get(`/api/products/${product.parentProduct}`)
+              const parentProduct = parentResponse.data
+
+              // Filter out the variant
+              const updatedVariants = parentProduct.variants.filter((v: ProductVariant) => v.sku !== product.sku)
+
+              // Update the parent product
+              await axios.put(`/api/products/${product.parentProduct}`, {
+                ...parentProduct,
+                variants: updatedVariants,
+              })
+
+              toast.success("Variant deleted successfully")
+            } else {
+              // Regular product deletion
+              await axios.delete(`/api/products/${product._id}`)
+              toast.success("Product deleted successfully")
+            }
+
+            router.refresh()
+          } catch (error) {
+            toast.error("Failed to delete product. Please try again.")
+          }
+        }
+
+        const handleRestock = async () => {
+          try {
+            const quantity = prompt("Enter quantity to restock:", "10")
+            if (!quantity) return
+
+            if (product.isVariant && product.parentProduct) {
+              // Get the parent product
+              const parentResponse = await axios.get(`/api/products/${product.parentProduct}`)
+              const parentProduct = parentResponse.data
+
+              // Find and update the variant
+              const updatedVariants = parentProduct.variants.map((v: ProductVariant) => {
+                if (v.sku === product.sku) {
+                  return {
+                    ...v,
+                    stock: v.stock + Number.parseInt(quantity),
+                  }
+                }
+                return v
+              })
+
+              // Update the parent product
+              await axios.put(`/api/products/${product.parentProduct}`, {
+                ...parentProduct,
+                variants: updatedVariants,
+              })
+            } else {
+              // Regular product restock
+              await axios.post(`/api/products/${product._id}/restock`, {
+                quantity: Number.parseInt(quantity),
+                notes: `Manual restock of ${quantity} units`,
+              })
+            }
+
+            toast.success(`Added ${quantity} units to inventory.`)
+            router.refresh()
+          } catch (error) {
+            toast.error("Failed to restock product. Please try again.")
+          }
+        }
+
+        return (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="ghost" className="h-8 w-8 p-0">
+                <span className="sr-only">Open menu</span>
+                <MoreHorizontal className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuLabel>Actions</DropdownMenuLabel>
+              <DropdownMenuItem onClick={() => navigator.clipboard.writeText(product._id)}>
+                Copy product ID
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href={`/inventory/${product.isVariant ? product.parentProduct : product._id}`}>View details</Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href={`/inventory/${product.isVariant ? product.parentProduct : product._id}/edit`}>
+                  Edit product
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleRestock}>Add stock</DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="text-destructive" onClick={handleDelete}>
+                Delete {product.isVariant ? "variant" : "product"}
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )
+      },
+    },
+  ]
 
   const table = useReactTable({
     data: products,

@@ -1,11 +1,12 @@
-import mongoose, { Schema, type Document, type Model } from "mongoose"
+import mongoose, { Schema, type Document } from "mongoose"
 
-export interface IVariant {
+export interface IProductVariant {
   name: string
   sku: string
   price: number
   cost: number
   stock: number
+  minStockLevel?: number
 }
 
 export interface IProduct extends Document {
@@ -17,62 +18,69 @@ export interface IProduct extends Document {
   cost: number
   stock: number
   minStockLevel: number
-  location: string
-  supplier: string
-  status: "In Stock" | "Low Stock" | "Out of Stock"
-  variants: IVariant[]
-  lastRestocked: Date
+  status: string
+  variants?: IProductVariant[]
   createdAt: Date
   updatedAt: Date
-  lowStockThreshold: number // Added lowStockThreshold property
 }
 
-const VariantSchema = new Schema<IVariant>({
+const ProductVariantSchema = new Schema<IProductVariant>({
   name: { type: String, required: true },
   sku: { type: String, required: true },
   price: { type: Number, required: true },
   cost: { type: Number, required: true },
   stock: { type: Number, required: true, default: 0 },
+  minStockLevel: { type: Number, default: 5 },
 })
 
 const ProductSchema = new Schema<IProduct>(
   {
     name: { type: String, required: true },
-    description: { type: String },
+    description: { type: String, default: "" },
     category: { type: String, required: true },
     sku: { type: String, required: true, unique: true },
     price: { type: Number, required: true },
     cost: { type: Number, required: true },
     stock: { type: Number, required: true, default: 0 },
     minStockLevel: { type: Number, default: 5 },
-    location: { type: String },
-    supplier: { type: String },
     status: {
       type: String,
       enum: ["In Stock", "Low Stock", "Out of Stock"],
-      default: "Out of Stock",
+      default: "In Stock",
     },
-    variants: [VariantSchema],
-    lastRestocked: { type: Date, default: Date.now },
-    lowStockThreshold: { type: Number, default: 5 }, // Added schema definition
+    variants: [ProductVariantSchema],
   },
   { timestamps: true },
 )
 
-// Calculate status based on stock and minStockLevel
+// Pre-save middleware to update stock and status based on variants
 ProductSchema.pre("save", function (next) {
-  if (this.stock <= 0) {
-    this.status = "Out of Stock"
-  } else if (this.stock <= this.minStockLevel) {
-    this.status = "Low Stock"
+  // If this product has variants, calculate the total stock from variants
+  if (this.variants && this.variants.length > 0) {
+    // Sum up the stock of all variants
+    this.stock = this.variants.reduce((total, variant) => total + variant.stock, 0)
+
+    // Update status based on the calculated stock
+    if (this.stock <= 0) {
+      this.status = "Out of Stock"
+    } else if (this.stock <= this.minStockLevel) {
+      this.status = "Low Stock"
+    } else {
+      this.status = "In Stock"
+    }
   } else {
-    this.status = "In Stock"
+    // For products without variants, update status based on the product's stock
+    if (this.stock <= 0) {
+      this.status = "Out of Stock"
+    } else if (this.stock <= this.minStockLevel) {
+      this.status = "Low Stock"
+    } else {
+      this.status = "In Stock"
+    }
   }
+
   next()
 })
 
-// Prevent model overwrite error in development with hot reloading
-const Product: Model<IProduct> = mongoose.models.Product || mongoose.model<IProduct>("Product", ProductSchema)
-
-export default Product
+export default mongoose.models.Product || mongoose.model<IProduct>("Product", ProductSchema)
 

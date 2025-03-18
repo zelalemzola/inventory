@@ -1,12 +1,12 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import dbConnect from "@/lib/db"
 import Product from "@/models/Product"
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
     await dbConnect()
 
-    // Get distinct categories
+    // Get all unique categories from products
     const categories = await Product.distinct("category")
 
     return NextResponse.json(categories)
