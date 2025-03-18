@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Button } from "@/components/ui/button"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { AlertCircle, CheckCircle, XCircle } from "lucide-react"
+import { AlertCircle, CheckCircle, XCircle, TrendingUp, TrendingDown } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
     DropdownMenu,
@@ -65,6 +65,7 @@ export function SaleDetails({ id }: SaleDetailsProps) {
             // Refresh the sale data
             const response = await axios.get(`/api/sales/${id}`)
             setSale(response.data)
+            router.refresh()
         } catch (error) {
             toast.error("Failed to cancel sale. Please try again.")
         }
@@ -86,6 +87,9 @@ export function SaleDetails({ id }: SaleDetailsProps) {
                 toast.success("Inventory has been updated based on this sale")
             }
 
+            // Refresh the sale data
+            const response = await axios.get(`/api/sales/${id}`)
+            setSale(response.data)
             router.refresh()
         } catch (error) {
             console.error("Error updating sale status:", error)
@@ -93,6 +97,10 @@ export function SaleDetails({ id }: SaleDetailsProps) {
         } finally {
             setIsUpdating(false)
         }
+    }
+
+    const formatNumber = (num: number) => {
+        return new Intl.NumberFormat("en-US").format(num)
     }
 
     if (loading) {
@@ -112,6 +120,9 @@ export function SaleDetails({ id }: SaleDetailsProps) {
     if (!sale) {
         return <div className="flex justify-center p-8">Sale not found</div>
     }
+
+    const totalProfit = sale.profit || 0
+    const profitMargin = sale.subtotal > 0 ? (totalProfit / sale.subtotal) * 100 : 0
 
     return (
         <div className="space-y-6">
@@ -189,8 +200,8 @@ export function SaleDetails({ id }: SaleDetailsProps) {
                                     <Table>
                                         <TableHeader>
                                             <TableRow>
-                                                <TableHead>Product</TableHead>
-                                                <TableHead>SKU</TableHead>
+                                                <TableHead className="text-left">Product</TableHead>
+                                                <TableHead className="text-left">SKU</TableHead>
                                                 <TableHead className="text-center">Quantity</TableHead>
                                                 <TableHead className="text-right">Unit Price</TableHead>
                                                 <TableHead className="text-right">Total</TableHead>
@@ -199,9 +210,9 @@ export function SaleDetails({ id }: SaleDetailsProps) {
                                         <TableBody>
                                             {sale.items.map((item: any, index: number) => (
                                                 <TableRow key={index}>
-                                                    <TableCell>{item.productName}</TableCell>
-                                                    <TableCell className="font-mono text-xs">{item.sku}</TableCell>
-                                                    <TableCell className="text-center">{item.quantity}</TableCell>
+                                                    <TableCell className="text-left">{item.productName}</TableCell>
+                                                    <TableCell className="text-left font-mono text-xs">{item.sku}</TableCell>
+                                                    <TableCell className="text-center">{formatNumber(item.quantity)}</TableCell>
                                                     <TableCell className="text-right">${item.price.toFixed(2)}</TableCell>
                                                     <TableCell className="text-right">${item.total.toFixed(2)}</TableCell>
                                                 </TableRow>
@@ -226,6 +237,33 @@ export function SaleDetails({ id }: SaleDetailsProps) {
                                     <span>${sale.total.toFixed(2)}</span>
                                 </div>
                             </div>
+
+                            {sale.status === "Completed" && (
+                                <>
+                                    <Separator />
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span>Profit/Loss</span>
+                                            <div className="flex items-center">
+                                                {totalProfit > 0 ? (
+                                                    <TrendingUp className="mr-2 h-4 w-4 text-green-500" />
+                                                ) : totalProfit < 0 ? (
+                                                    <TrendingDown className="mr-2 h-4 w-4 text-red-500" />
+                                                ) : null}
+                                                <span className={totalProfit > 0 ? "text-green-500" : totalProfit < 0 ? "text-red-500" : ""}>
+                                                    ${totalProfit.toFixed(2)}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="flex justify-between items-center text-sm">
+                                            <span>Profit Margin</span>
+                                            <span className={profitMargin > 0 ? "text-green-500" : profitMargin < 0 ? "text-red-500" : ""}>
+                                                {profitMargin.toFixed(2)}%
+                                            </span>
+                                        </div>
+                                    </div>
+                                </>
+                            )}
 
                             {sale.notes && (
                                 <>

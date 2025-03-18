@@ -32,6 +32,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { toast } from "sonner"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 type Sale = {
   _id: string
@@ -56,12 +57,12 @@ export const columns: ColumnDef<Sale>[] = [
         </Button>
       )
     },
-    cell: ({ row }) => <div>{new Date(row.getValue("date")).toLocaleDateString()}</div>,
+    cell: ({ row }) => <div className="text-left">{new Date(row.getValue("date")).toLocaleDateString()}</div>,
   },
   {
     accessorKey: "customer",
     header: "Customer",
-    cell: ({ row }) => <div>{row.getValue("customer")}</div>,
+    cell: ({ row }) => <div className="text-left">{row.getValue("customer")}</div>,
   },
   {
     accessorKey: "items",
@@ -76,7 +77,7 @@ export const columns: ColumnDef<Sale>[] = [
       const variantInfo = firstItem.variant ? ` (${firstItem.variant})` : ""
 
       return (
-        <div>
+        <div className="text-left">
           <div className="font-medium">
             {productName}
             {variantInfo}
@@ -237,14 +238,21 @@ export function SalesTable({ filters = {} }: SalesTableProps) {
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
   const [rowSelection, setRowSelection] = React.useState({})
- 
+  const [statusFilter, setStatusFilter] = React.useState<string>("all")
   const router = useRouter()
 
   React.useEffect(() => {
     const fetchSales = async () => {
       try {
         setLoading(true)
-        const response = await axios.get("/api/sales", { params: filters })
+        const params = { ...filters }
+
+        // Add status filter if not "all"
+        if (statusFilter !== "all") {
+          params.status = statusFilter
+        }
+
+        const response = await axios.get("/api/sales", { params })
         setSales(response.data.sales)
       } catch (error) {
         console.error("Error fetching sales:", error)
@@ -255,7 +263,7 @@ export function SalesTable({ filters = {} }: SalesTableProps) {
     }
 
     fetchSales()
-  }, [filters, toast, router])
+  }, [filters, statusFilter, toast, router])
 
   const table = useReactTable({
     data: sales,
@@ -278,13 +286,28 @@ export function SalesTable({ filters = {} }: SalesTableProps) {
 
   return (
     <div className="w-full">
-      <div className="flex items-center py-4">
+      <div className="flex flex-col md:flex-row items-center gap-4 py-4">
         <Input
           placeholder="Filter by customer..."
           value={(table.getColumn("customer")?.getFilterValue() as string) ?? ""}
           onChange={(event) => table.getColumn("customer")?.setFilterValue(event.target.value)}
           className="max-w-sm"
         />
+
+        <div className="flex-1 min-w-[200px]">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="Completed">Completed</SelectItem>
+              <SelectItem value="Pending">Pending</SelectItem>
+              <SelectItem value="Cancelled">Cancelled</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" className="ml-auto">
@@ -317,7 +340,7 @@ export function SalesTable({ filters = {} }: SalesTableProps) {
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id}>
+                    <TableHead key={header.id} className="text-left">
                       {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                     </TableHead>
                   )
@@ -336,7 +359,12 @@ export function SalesTable({ filters = {} }: SalesTableProps) {
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id} data-state={row.getIsSelected() ? "selected" : undefined}>
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+                    <TableCell
+                      key={cell.id}
+                      className={cell.column.id === "total" || cell.column.id === "profit" ? "text-right" : ""}
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
                   ))}
                 </TableRow>
               ))

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "@/components/ui/chart"
 import axios from "axios"
-import {toast} from 'sonner'
+import { toast } from "sonner"
 
 type SalesData = {
     name: string
@@ -11,10 +11,14 @@ type SalesData = {
     profit: number
 }
 
+const formatNumber = (num: number) => {
+    return new Intl.NumberFormat("en-US").format(num)
+}
+
 export function Overview() {
     const [data, setData] = useState<SalesData[]>([])
     const [loading, setLoading] = useState(true)
-   
+    
 
     useEffect(() => {
         const fetchSalesData = async () => {
@@ -105,7 +109,7 @@ export function Overview() {
                 <CartesianGrid strokeDasharray="3 3" />
                 <XAxis dataKey="name" />
                 <YAxis />
-                <Tooltip formatter={(value) => [`$${value}`, ""]} />
+                <Tooltip formatter={(value) => [`$${formatNumber(Number(value))}`, ""]} />
                 <Legend />
                 <Bar dataKey="sales" fill="#8884d8" name="Sales" />
                 <Bar dataKey="profit" fill="#82ca9d" name="Profit" />

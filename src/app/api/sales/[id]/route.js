@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server"
+import {  NextResponse } from "next/server"
 import dbConnect from "@/lib/db"
 import Sale from "@/models/Sale"
 import Product from "@/models/Product"
@@ -49,7 +49,7 @@ export async function PUT(req, { params }) {
       // Process each item in the sale
       for (const item of items) {
         const productId = item.product._id
-        const variantName = item.variant; // Ensure variant is optional
+        const variantName = item.variant
         const quantity = item.quantity
 
         // Find the product
@@ -93,7 +93,7 @@ export async function PUT(req, { params }) {
         // Update product status based on stock levels
         if (product.stock <= 0) {
           product.status = "Out of Stock"
-        } else if (product.stock <= product.lowStockThreshold) { // Fixed lowStockThreshold usage
+        } else if (product.stock <= product.lowStockThreshold) {
           product.status = "Low Stock"
         } else {
           product.status = "In Stock"
@@ -104,7 +104,7 @@ export async function PUT(req, { params }) {
           product.variants.forEach((variant) => {
             if (variant.stock <= 0) {
               variant.status = "Out of Stock"
-            } else if (variant.stock <= product.lowStockThreshold) { // Fixed lowStockThreshold usage
+            } else if (variant.stock <= product.lowStockThreshold) {
               variant.status = "Low Stock"
             } else {
               variant.status = "In Stock"

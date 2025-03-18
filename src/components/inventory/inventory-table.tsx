@@ -31,7 +31,8 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import {toast} from 'sonner'
+import { toast } from "sonner"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 type ProductVariant = {
   _id?: string
@@ -60,14 +61,21 @@ type Product = {
 export const columns: ColumnDef<Product>[] = [
   {
     accessorKey: "name",
-    header: "Name",
+    header: ({ column }) => {
+      return (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          Name
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      )
+    },
     cell: ({ row }) => {
       const isVariant = row.original.isVariant
       const parentId = row.original.parentProduct
       const linkId = isVariant ? parentId : row.original._id
 
       return (
-        <div>
+        <div className="text-left">
           <Link href={`/inventory/${linkId}`} className="font-medium hover:underline">
             {row.getValue("name")}
           </Link>
@@ -78,13 +86,20 @@ export const columns: ColumnDef<Product>[] = [
   },
   {
     accessorKey: "category",
-    header: "Category",
-    cell: ({ row }) => <div>{row.getValue("category")}</div>,
+    header: ({ column }) => {
+      return (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          Category
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      )
+    },
+    cell: ({ row }) => <div className="text-left">{row.getValue("category")}</div>,
   },
   {
     accessorKey: "sku",
     header: "SKU",
-    cell: ({ row }) => <div className="font-mono text-sm">{row.getValue("sku")}</div>,
+    cell: ({ row }) => <div className="text-left font-mono text-sm">{row.getValue("sku")}</div>,
   },
   {
     accessorKey: "price",
@@ -134,11 +149,22 @@ export const columns: ColumnDef<Product>[] = [
         </Button>
       )
     },
-    cell: ({ row }) => <div className="text-center">{row.getValue("stock")}</div>,
+    cell: ({ row }) => {
+      const stock = Number.parseFloat(row.getValue("stock"))
+      const formatted = new Intl.NumberFormat("en-US").format(stock)
+      return <div className="text-center">{formatted}</div>
+    },
   },
   {
     accessorKey: "status",
-    header: "Status",
+    header: ({ column }) => {
+      return (
+        <Button variant="ghost" onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}>
+          Status
+          <ArrowUpDown className="ml-2 h-4 w-4" />
+        </Button>
+      )
+    },
     cell: ({ row }) => {
       const status = row.getValue("status") as string
       return (
@@ -278,18 +304,52 @@ export interface InventoryTableProps {
 
 export function InventoryTable({ filters = {} }: InventoryTableProps) {
   const [products, setProducts] = React.useState<Product[]>([])
+  const [allCategories, setAllCategories] = React.useState<string[]>([])
   const [loading, setLoading] = React.useState(true)
   const [sorting, setSorting] = React.useState<SortingState>([])
   const [columnFilters, setColumnFilters] = React.useState<ColumnFiltersState>([])
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
   const [rowSelection, setRowSelection] = React.useState({})
+  const [statusFilter, setStatusFilter] = React.useState<string>("all")
+  const [categoryFilter, setCategoryFilter] = React.useState<string>("all")
+  
   const router = useRouter()
+
+  // Fetch all categories
+  React.useEffect(() => {
+    const fetchCategories = async () => {
+      try {
+        const response = await axios.get("/api/products/categories")
+        if (response.data) {
+          setAllCategories(response.data)
+        }
+      } catch (error) {
+        console.error("Error fetching categories:", error)
+      }
+    }
+
+    fetchCategories()
+  }, [])
 
   React.useEffect(() => {
     const fetchProducts = async () => {
       try {
         setLoading(true)
-        const response = await axios.get("/api/products", { params: filters })
+
+        // Prepare filters
+        const params = { ...filters }
+
+        // Add status filter if not "all"
+        if (statusFilter !== "all") {
+          params.status = statusFilter
+        }
+
+        // Add category filter if not "all"
+        if (categoryFilter !== "all") {
+          params.category = categoryFilter
+        }
+
+        const response = await axios.get("/api/products", { params })
 
         // Process products and their variants
         const productsWithVariants: Product[] = []
@@ -301,19 +361,31 @@ export function InventoryTable({ filters = {} }: InventoryTableProps) {
           // Add variants if they exist
           if (product.variants && product.variants.length > 0) {
             product.variants.forEach((variant: ProductVariant) => {
-              productsWithVariants.push({
-                _id: variant._id || `${product._id}-${variant.sku}`,
-                name: variant.name,
-                category: product.category,
-                sku: variant.sku,
-                price: variant.price,
-                cost: variant.cost,
-                stock: variant.stock,
-                status: variant.stock > 0 ? (variant.stock <= 5 ? "Low Stock" : "In Stock") : "Out of Stock",
-                isVariant: true,
-                parentProduct: product._id,
-                parentName: product.name,
-              })
+              // Determine variant status
+              let variantStatus: "In Stock" | "Low Stock" | "Out of Stock" = "In Stock"
+              if (variant.stock <= 0) {
+                variantStatus = "Out of Stock"
+              } else if (variant.stock <= 5) {
+                // Using 5 as threshold
+                variantStatus = "Low Stock"
+              }
+
+              // Only add variant if it matches status filter
+              if (statusFilter === "all" || statusFilter === variantStatus) {
+                productsWithVariants.push({
+                  _id: variant._id || `${product._id}-${variant.sku}`,
+                  name: variant.name,
+                  category: product.category,
+                  sku: variant.sku,
+                  price: variant.price,
+                  cost: variant.cost,
+                  stock: variant.stock,
+                  status: variantStatus,
+                  isVariant: true,
+                  parentProduct: product._id,
+                  parentName: product.name,
+                })
+              }
             })
           }
         })
@@ -328,7 +400,7 @@ export function InventoryTable({ filters = {} }: InventoryTableProps) {
     }
 
     fetchProducts()
-  }, [filters, toast])
+  }, [filters, statusFilter, categoryFilter, toast])
 
   const table = useReactTable({
     data: products,
@@ -349,22 +421,58 @@ export function InventoryTable({ filters = {} }: InventoryTableProps) {
     },
   })
 
+  const formatNumber = (num: number) => {
+    return new Intl.NumberFormat("en-US").format(num)
+  }
+
   return (
     <div className="w-full">
-      <div className="flex items-center py-4">
+      <div className="flex flex-col md:flex-row items-center gap-4 py-4">
         <Input
           placeholder="Filter products..."
           value={(table.getColumn("name")?.getFilterValue() as string) ?? ""}
           onChange={(event) => table.getColumn("name")?.setFilterValue(event.target.value)}
           className="max-w-sm"
         />
-        <Button className="ml-4" onClick={() => router.push("/inventory/new")}>
+
+        <div className="flex-1 min-w-[200px]">
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Filter by status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Statuses</SelectItem>
+              <SelectItem value="In Stock">In Stock</SelectItem>
+              <SelectItem value="Low Stock">Low Stock</SelectItem>
+              <SelectItem value="Out of Stock">Out of Stock</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div className="flex-1 min-w-[200px]">
+          <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+            <SelectTrigger>
+              <SelectValue placeholder="Filter by category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Categories</SelectItem>
+              {allCategories.map((category) => (
+                <SelectItem key={category} value={category}>
+                  {category}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <Button className="ml-auto" onClick={() => router.push("/inventory/new")}>
           <Plus className="mr-2 h-4 w-4" />
           Add Product
         </Button>
+
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="outline" className="ml-auto">
+            <Button variant="outline">
               Columns <ChevronDown className="ml-2 h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
@@ -387,14 +495,23 @@ export function InventoryTable({ filters = {} }: InventoryTableProps) {
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
-      <div className="rounded-md border">
+      <div className="rounded-md border overflow-x-auto">
         <Table>
           <TableHeader>
             {table.getHeaderGroups().map((headerGroup) => (
               <TableRow key={headerGroup.id}>
                 {headerGroup.headers.map((header) => {
                   return (
-                    <TableHead key={header.id}>
+                    <TableHead
+                      key={header.id}
+                      className={
+                        header.id === "price" || header.id === "cost"
+                          ? "text-right"
+                          : header.id === "stock" || header.id === "status"
+                            ? "text-center"
+                            : "text-left"
+                      }
+                    >
                       {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
                     </TableHead>
                   )
@@ -413,7 +530,18 @@ export function InventoryTable({ filters = {} }: InventoryTableProps) {
               table.getRowModel().rows.map((row) => (
                 <TableRow key={row.id} data-state={row.getIsSelected() && "selected"}>
                   {row.getVisibleCells().map((cell) => (
-                    <TableCell key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</TableCell>
+                    <TableCell
+                      key={cell.id}
+                      className={
+                        cell.column.id === "price" || cell.column.id === "cost"
+                          ? "text-right"
+                          : cell.column.id === "stock" || cell.column.id === "status"
+                            ? "text-center"
+                            : "text-left"
+                      }
+                    >
+                      {flexRender(cell.column.columnDef.cell, cell.getContext())}
+                    </TableCell>
                   ))}
                 </TableRow>
               ))
@@ -429,8 +557,8 @@ export function InventoryTable({ filters = {} }: InventoryTableProps) {
       </div>
       <div className="flex items-center justify-end space-x-2 py-4">
         <div className="flex-1 text-sm text-muted-foreground">
-          {table.getFilteredSelectedRowModel().rows.length} of {table.getFilteredRowModel().rows.length} row(s)
-          selected.
+          {formatNumber(table.getFilteredSelectedRowModel().rows.length)} of{" "}
+          {formatNumber(table.getFilteredRowModel().rows.length)} row(s) selected.
         </div>
         <div className="space-x-2">
           <Button

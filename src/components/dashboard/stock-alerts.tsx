@@ -21,7 +21,7 @@ export function StockAlerts() {
   const [products, setProducts] = useState<Product[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
+  
   const router = useRouter()
 
   useEffect(() => {
@@ -129,7 +129,7 @@ export function StockAlerts() {
           variants: updatedVariants,
         })
 
-        toast.error( `Added ${quantity} units to ${variant}.`)
+        toast.success(`Added ${quantity} units to ${variant}.`)
       } else {
         // Restock a main product
         await axios.post(`/api/products/${productId}/restock`, {
@@ -137,7 +137,7 @@ export function StockAlerts() {
           notes: `Manual restock of ${quantity} units from dashboard`,
         })
 
-        toast.error(`Added ${quantity} units to inventory.`)
+        toast.success(`Added ${quantity} units to inventory.`)
       }
 
       // Refresh the list
@@ -205,6 +205,10 @@ export function StockAlerts() {
     }
   }
 
+  const formatNumber = (num: number) => {
+    return new Intl.NumberFormat("en-US").format(num)
+  }
+
   if (loading) {
     return <div className="flex items-center justify-center h-[300px]">Loading stock alerts...</div>
   }
@@ -235,7 +239,7 @@ export function StockAlerts() {
             <div className="flex items-center pt-2">
               {product.status === "Low Stock" && (
                 <Badge variant="outline" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
-                  Low Stock ({product.stock})
+                  Low Stock ({formatNumber(product.stock)})
                 </Badge>
               )}
               {product.status === "Out of Stock" && <Badge variant="destructive">Out of Stock</Badge>}

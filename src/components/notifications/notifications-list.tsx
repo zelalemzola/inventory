@@ -180,6 +180,11 @@ export function NotificationsList({ type }: NotificationsListProps) {
         }
     }
 
+    const formatDate = (dateString: string) => {
+        const date = new Date(dateString)
+        return `${date.toLocaleDateString()} at ${date.toLocaleTimeString()}`
+    }
+
     if (loading) {
         return <div className="flex items-center justify-center h-[300px]">Loading notifications...</div>
     }
@@ -241,9 +246,7 @@ export function NotificationsList({ type }: NotificationsListProps) {
                                 )}
                             </div>
                             <p className="text-sm text-muted-foreground">{notification.message}</p>
-                            <p className="text-xs text-muted-foreground">
-                                {new Date(notification.date).toLocaleDateString()} at {new Date(notification.date).toLocaleTimeString()}
-                            </p>
+                            <p className="text-xs text-muted-foreground">{formatDate(notification.date)}</p>
                             {notification.product && (
                                 <Button
                                     variant="link"

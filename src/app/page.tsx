@@ -28,7 +28,7 @@ export default function DashboardPage() {
     totalProfit: 0,
   })
   const [loading, setLoading] = useState(true)
- 
+  
   const router = useRouter()
 
   useEffect(() => {
@@ -102,7 +102,9 @@ export default function DashboardPage() {
               <DollarSign className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">${loading ? "..." : stats.totalRevenue.toFixed(2)}</div>
+              <div className="text-2xl font-bold">
+                ${loading ? "..." : new Intl.NumberFormat("en-US").format(stats.totalRevenue)}
+              </div>
               <p className="text-xs text-muted-foreground">+20.1% from last month</p>
             </CardContent>
           </Card>
@@ -112,7 +114,9 @@ export default function DashboardPage() {
               <Package className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">${loading ? "..." : stats.inventoryValue.toFixed(2)}</div>
+              <div className="text-2xl font-bold">
+                ${loading ? "..." : new Intl.NumberFormat("en-US").format(stats.inventoryValue)}
+              </div>
               <p className="text-xs text-muted-foreground">+4.3% from last month</p>
             </CardContent>
           </Card>
@@ -122,7 +126,9 @@ export default function DashboardPage() {
               <ShoppingCart className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">+{loading ? "..." : stats.totalSales}</div>
+              <div className="text-2xl font-bold">
+                +{loading ? "..." : new Intl.NumberFormat("en-US").format(stats.totalSales)}
+              </div>
               <p className="text-xs text-muted-foreground">+12.5% from last month</p>
             </CardContent>
           </Card>
@@ -132,7 +138,9 @@ export default function DashboardPage() {
               <Bell className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{loading ? "..." : stats.lowStockItems}</div>
+              <div className="text-2xl font-bold">
+                {loading ? "..." : new Intl.NumberFormat("en-US").format(stats.lowStockItems)}
+              </div>
               <p className="text-xs text-muted-foreground">+2 since yesterday</p>
             </CardContent>
           </Card>
@@ -142,7 +150,9 @@ export default function DashboardPage() {
               <TrendingUp className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">${loading ? "..." : stats.totalProfit.toFixed(2)}</div>
+              <div className="text-2xl font-bold text-green-600">
+                ${loading ? "..." : new Intl.NumberFormat("en-US").format(stats.totalProfit)}
+              </div>
               <p className="text-xs text-muted-foreground">+15.2% from last month</p>
             </CardContent>
           </Card>

@@ -4,7 +4,6 @@ import Sale from "@/models/Sale"
 import Product from "@/models/Product"
 import StockHistory from "@/models/StockHistory"
 import Notification from "@/models/Notification"
-import mongoose from "mongoose"
 
 export async function GET(req: NextRequest) {
   try {
@@ -136,7 +135,7 @@ export async function POST(req: NextRequest) {
           subtotal += itemTotal
 
           processedItems.push({
-            product: product._id as mongoose.Types.ObjectId, // Explicitly cast to mongoose.Types.ObjectId
+            product: productId, // Use productId directly which should be an ObjectId
             productName: `${product.name} (${variant.name})`,
             sku: variant.sku,
             quantity: item.quantity,
@@ -172,7 +171,7 @@ export async function POST(req: NextRequest) {
           subtotal += itemTotal
 
           processedItems.push({
-            product: product._id as mongoose.Types.ObjectId, // Explicitly cast to mongoose.Types.ObjectId
+            product: productId, // Use productId directly which should be an ObjectId
             productName: product.name,
             sku: product.sku,
             quantity: item.quantity,
