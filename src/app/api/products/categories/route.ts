@@ -6,7 +6,7 @@ export async function GET() {
   try {
     await dbConnect()
 
-    // Get all unique categories from products
+    // Get all unique categories
     const categories = await Product.distinct("category")
 
     return NextResponse.json(categories)

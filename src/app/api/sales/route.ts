@@ -94,12 +94,12 @@ export async function POST(req: NextRequest) {
 
       let itemTotal = 0
       let itemCost = 0
-      let stockToUpdate = false
+      const stockToUpdate = true // Always update stock regardless of status
 
       // Process variant or main product
       if (variantName) {
         // Find the variant
-        const variantIndex = product.variants.findIndex((v:any) => v.name === variantName)
+        const variantIndex = product.variants.findIndex((v: any) => v.name === variantName)
         if (variantIndex === -1) {
           return NextResponse.json(
             { error: `Variant ${variantName} not found for product ${product.name}` },
@@ -109,31 +109,28 @@ export async function POST(req: NextRequest) {
 
         const variant = product.variants[variantIndex]
 
-        if (variant.stock < quantity && status === "Completed") {
+        if (variant.stock < quantity) {
           return NextResponse.json(
             { error: `Not enough stock for ${product.name} (${variant.name}). Available: ${variant.stock}` },
             { status: 400 },
           )
         }
 
-        // Only update stock if status is Completed
-        if (status === "Completed") {
-          const previousStock = variant.stock
-          variant.stock -= quantity
-          stockToUpdate = true
+        // Always update stock regardless of status
+        const previousStock = variant.stock
+        variant.stock -= quantity
 
-          // Create stock history record
-          await StockHistory.create({
-            product: productId,
-            previousStock,
-            newStock: variant.stock,
-            change: -quantity,
-            type: "Sale",
-            notes: `Sale ID: ${sale._id}`,
-          })
+        // Create stock history record
+        await StockHistory.create({
+          product: productId,
+          previousStock,
+          newStock: variant.stock,
+          change: -quantity,
+          type: "Sale",
+          notes: `Sale ID: ${sale._id} (${status})`,
+        })
 
-          product.variants[variantIndex] = variant
-        }
+        product.variants[variantIndex] = variant
 
         // Calculate item total and cost
         itemTotal = item.price * quantity
@@ -152,29 +149,26 @@ export async function POST(req: NextRequest) {
         })
       } else {
         // Main product
-        if (product.stock < quantity && status === "Completed") {
+        if (product.stock < quantity) {
           return NextResponse.json(
             { error: `Not enough stock for ${product.name}. Available: ${product.stock}` },
             { status: 400 },
           )
         }
 
-        // Only update stock if status is Completed
-        if (status === "Completed") {
-          const previousStock = product.stock
-          product.stock -= quantity
-          stockToUpdate = true
+        // Always update stock regardless of status
+        const previousStock = product.stock
+        product.stock -= quantity
 
-          // Create stock history record
-          await StockHistory.create({
-            product: productId,
-            previousStock,
-            newStock: product.stock,
-            change: -quantity,
-            type: "Sale",
-            notes: `Sale ID: ${sale._id}`,
-          })
-        }
+        // Create stock history record
+        await StockHistory.create({
+          product: productId,
+          previousStock,
+          newStock: product.stock,
+          change: -quantity,
+          type: "Sale",
+          notes: `Sale ID: ${sale._id} (${status})`,
+        })
 
         // Calculate item total and cost
         itemTotal = item.price * quantity
@@ -198,13 +192,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Calculate profit only if status is Completed
-    let profit = 0
-    if (status === "Completed") {
-      profit = processedItems.reduce((total, item) => {
-        return total + (item.price * item.quantity - item.cost * item.quantity)
-      }, 0)
-    }
+    // Calculate profit for all sales (both pending and completed)
+    const profit = processedItems.reduce((total, item) => {
+      return total + (item.price * item.quantity - item.cost * item.quantity)
+    }, 0)
 
     // Update sale with processed items and calculations
     sale.items = processedItems

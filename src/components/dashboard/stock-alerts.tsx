@@ -6,6 +6,8 @@ import { AlertCircle } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
+import { Button } from "@/components/ui/button"
+import { toast } from "sonner"
 
 type Product = {
   _id: string
@@ -40,81 +42,127 @@ export function StockAlerts() {
   const [alertItems, setAlertItems] = useState<AlertItem[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    const fetchLowStockItems = async () => {
-      try {
-        setLoading(true)
-        const response = await axios.get("/api/products", {
-          params: {
-            status: "Low Stock,Out of Stock",
-            limit: 100,
-          },
-        })
+  const fetchLowStockItems = async () => {
+    try {
+      setLoading(true)
+      const response = await axios.get("/api/products", {
+        params: {
+          status: "Low Stock,Out of Stock",
+          limit: 100,
+        },
+      })
 
-        const products = response.data.products as Product[]
-        const alerts: AlertItem[] = []
+      const products = response.data.products as Product[]
+      const alerts: AlertItem[] = []
 
-        // Process main products
-        products.forEach((product) => {
-          if (product.status === "Low Stock" || product.status === "Out of Stock") {
-            alerts.push({
-              _id: product._id,
-              name: product.name,
-              sku: product.sku,
-              stock: product.stock,
-              minStockLevel: product.minStockLevel,
-              status: product.status,
-              category: product.category,
-            })
-          }
+      // Process main products
+      products.forEach((product) => {
+        if (product.status === "Low Stock" || product.status === "Out of Stock") {
+          alerts.push({
+            _id: product._id,
+            name: product.name,
+            sku: product.sku,
+            stock: product.stock,
+            minStockLevel: product.minStockLevel,
+            status: product.status,
+            category: product.category,
+          })
+        }
 
-          // Process variants
-          if (product.variants && product.variants.length > 0) {
-            product.variants.forEach((variant) => {
-              const variantStock = variant.stock
-              const variantMinStock = variant.minStockLevel || product.minStockLevel
+        // Process variants
+        if (product.variants && product.variants.length > 0) {
+          product.variants.forEach((variant) => {
+            const variantStock = variant.stock
+            const variantMinStock = variant.minStockLevel || product.minStockLevel
 
-              if (variantStock <= 0 || variantStock <= variantMinStock) {
-                const status = variantStock <= 0 ? "Out of Stock" : "Low Stock"
+            if (variantStock <= 0 || variantStock <= variantMinStock) {
+              const status = variantStock <= 0 ? "Out of Stock" : "Low Stock"
 
-                alerts.push({
-                  _id: `${product._id}-${variant.sku}`,
-                  name: variant.name,
-                  sku: variant.sku,
-                  stock: variantStock,
-                  minStockLevel: variantMinStock,
-                  status: status,
-                  category: product.category,
-                  isVariant: true,
-                  parentId: product._id,
-                  parentName: product.name,
-                })
-              }
-            })
-          }
-        })
+              alerts.push({
+                _id: `${product._id}-${variant.sku}`,
+                name: variant.name,
+                sku: variant.sku,
+                stock: variantStock,
+                minStockLevel: variantMinStock,
+                status: status,
+                category: product.category,
+                isVariant: true,
+                parentId: product._id,
+                parentName: product.name,
+              })
+            }
+          })
+        }
+      })
 
-        // Sort by status (Out of Stock first, then Low Stock) and then by stock level
-        alerts.sort((a, b) => {
-          if (a.status === b.status) {
-            return a.stock - b.stock
-          }
-          return a.status === "Out of Stock" ? -1 : 1
-        })
+      // Sort by status (Out of Stock first, then Low Stock) and then by stock level
+      alerts.sort((a, b) => {
+        if (a.status === b.status) {
+          return a.stock - b.stock
+        }
+        return a.status === "Out of Stock" ? -1 : 1
+      })
 
-        setAlertItems(alerts)
-      } catch (error) {
-        console.error("Error fetching low stock items:", error)
-      } finally {
-        setLoading(false)
-      }
+      setAlertItems(alerts)
+    } catch (error) {
+      console.error("Error fetching low stock items:", error)
+    } finally {
+      setLoading(false)
     }
+  }
 
+  useEffect(() => {
     fetchLowStockItems()
   }, [])
 
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat("en-US").format(num)
+  }
+
+  const handleRestock = async (item: AlertItem) => {
+    try {
+      const quantity = prompt("Enter quantity to restock:", "10")
+      if (!quantity) return
+
+      const productId = item.isVariant ? item.parentId : item._id
+
+      if (item.isVariant) {
+        // Get the product
+        const productResponse = await axios.get(`/api/products/${productId}`)
+        const product = productResponse.data
+
+        // Find and update the variant
+        const updatedVariants = product.variants.map((v: any) => {
+          if (v.name === item.name) {
+            return {
+              ...v,
+              stock: v.stock + Number.parseInt(quantity),
+            }
+          }
+          return v
+        })
+
+        // Update the product with the new variants
+        await axios.put(`/api/products/${productId}`, {
+          ...product,
+          variants: updatedVariants,
+        })
+      } else {
+        // Regular product restock
+        await axios.post(`/api/products/${item._id}/restock`, {
+          quantity: Number.parseInt(quantity),
+          notes: `Manual restock of ${quantity} units`,
+        })
+      }
+
+      toast.success(`Added ${quantity} units to inventory.`)
+
+      // Refresh the alerts
+      fetchLowStockItems()
+    } catch (error) {
+      console.error("Error restocking item:", error)
+      toast.error("Failed to restock item. Please try again.")
+    }
   }
 
   return (
@@ -151,13 +199,18 @@ export function StockAlerts() {
                   <div className="text-sm font-medium">
                     Stock: {formatNumber(item.stock)} / {formatNumber(item.minStockLevel)}
                   </div>
-                  {item.status === "Out of Stock" ? (
-                    <Badge variant="destructive">Out of Stock</Badge>
-                  ) : (
-                    <Badge variant="outline" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
-                      Low Stock
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-2 mt-1">
+                    {item.status === "Out of Stock" ? (
+                      <Badge variant="destructive">Out of Stock</Badge>
+                    ) : (
+                      <Badge variant="outline" className="bg-yellow-100 text-yellow-800 hover:bg-yellow-100">
+                        Low Stock
+                      </Badge>
+                    )}
+                    <Button variant="outline" size="sm" onClick={() => handleRestock(item)} className="h-7 px-2">
+                      Restock
+                    </Button>
+                  </div>
                 </div>
               </div>
             ))}

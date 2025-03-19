@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import dbConnect from "@/lib/db"
 import Product from "@/models/Product"
 import StockHistory from "@/models/StockHistory"
 
-export async function POST(req, { params }) {
+export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     await dbConnect()
 

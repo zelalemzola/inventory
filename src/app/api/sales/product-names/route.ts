@@ -6,24 +6,25 @@ export async function GET() {
   try {
     await dbConnect()
 
-    // Aggregate sales data to get unique product names
+    // Get all unique product names from sales
     const productNames = await Sale.aggregate([
-      { $match: { status: "Completed" } },
       { $unwind: "$items" },
-      {
-        $group: {
-          _id: "$items.productName",
-        },
-      },
+      { $group: { _id: "$items.productName" } },
       { $sort: { _id: 1 } },
+      { $project: { _id: 0, name: "$_id" } },
     ])
 
-    // Extract just the names
-    const names = productNames.map((item) => item._id).filter(Boolean)
+    // Extract the product names from the result
+    const result = await Sale.aggregate([
+      { $unwind: "$items" },
+      { $group: { _id: "$items.productName" } },
+      { $sort: { _id: 1 } },
+      { $project: { _id: 0, name: "$_id" } },
+    ])
 
-    return NextResponse.json({
-      names,
-    })
+    const names = result.map((item: any) => item.name)
+
+    return NextResponse.json({ names })
   } catch (error) {
     console.error("Error fetching product names:", error)
     return NextResponse.json({ error: "Failed to fetch product names" }, { status: 500 })

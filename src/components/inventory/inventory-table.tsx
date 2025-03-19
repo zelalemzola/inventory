@@ -31,7 +31,7 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import { toast } from "sonner"
+import { useToast } from "@/hooks/use-toast"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 type ProductVariant = {
@@ -69,7 +69,7 @@ export function InventoryTable({ filters = {} }: { filters?: Record<string, any>
   const [rowSelection, setRowSelection] = React.useState({})
   const [statusFilter, setStatusFilter] = React.useState<string>("all")
   const [categoryFilter, setCategoryFilter] = React.useState<string>("all")
- 
+  const { toast } = useToast()
   const router = useRouter()
 
   // Fetch all categories
@@ -425,6 +425,22 @@ export function InventoryTable({ filters = {} }: { filters?: Record<string, any>
     },
   })
 
+  // Add a dropdown menu for sorting options
+  const sortOptions = [
+    { label: "Name (A-Z)", field: "name", order: "asc" },
+    { label: "Name (Z-A)", field: "name", order: "desc" },
+    { label: "Price (Low to High)", field: "price", order: "asc" },
+    { label: "Price (High to Low)", field: "price", order: "desc" },
+    { label: "Stock (Low to High)", field: "stock", order: "asc" },
+    { label: "Stock (High to Low)", field: "stock", order: "desc" },
+    { label: "Most Recent", field: "updatedAt", order: "desc" },
+    { label: "Oldest", field: "updatedAt", order: "asc" },
+  ]
+
+  const handleSort = (field: string, order: "asc" | "desc") => {
+    setSorting([{ id: field, desc: order === "desc" }])
+  }
+
   const formatNumber = (num: number) => {
     return new Intl.NumberFormat("en-US").format(num)
   }
@@ -468,6 +484,26 @@ export function InventoryTable({ filters = {} }: { filters?: Record<string, any>
             </SelectContent>
           </Select>
         </div>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline">
+              <ArrowUpDown className="mr-2 h-4 w-4" />
+              Sort
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuLabel>Sort by</DropdownMenuLabel>
+            {sortOptions.map((option) => (
+              <DropdownMenuItem
+                key={`${option.field}-${option.order}`}
+                onClick={() => handleSort(option.field, option.order as "asc" | "desc")}
+              >
+                {option.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         <Button className="ml-auto" onClick={() => router.push("/inventory/new")}>
           <Plus className="mr-2 h-4 w-4" />

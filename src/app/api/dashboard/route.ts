@@ -1,13 +1,11 @@
 import { NextResponse } from "next/server"
 
-
-
-import dbConnect from "@/lib/db"
-import Sale from "@/models/Sale"
+import { connectToDatabase } from "@/lib/mongodb"
+import Sale from "@/models/sale"
 
 export const GET = async () => {
   try {
-    await dbConnect()
+    await connectToDatabase()
 
     const sales = await Sale.find({ status: "Completed" }).sort({ date: -1 }).limit(30).lean()
 

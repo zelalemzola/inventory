@@ -6,110 +6,88 @@ export async function GET(req: NextRequest) {
   try {
     await dbConnect()
 
+    // Parse query parameters for date filtering
     const url = new URL(req.url)
-    const searchParams = url.searchParams
-    const period = searchParams.get("period") || "all"
-    const startDate = searchParams.get("startDate")
-    const endDate = searchParams.get("endDate")
+    const startDate = url.searchParams.get("startDate")
+      ? new Date(url.searchParams.get("startDate") as string)
+      : new Date(new Date().setMonth(new Date().getMonth() - 1)) // Default to last month
 
-    // Build date range query
-    const dateQuery: any = {}
+    const endDate = url.searchParams.get("endDate") ? new Date(url.searchParams.get("endDate") as string) : new Date() // Default to current date
 
-    if (startDate && endDate) {
-      dateQuery.date = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate),
+    // Ensure end date is set to end of day
+    endDate.setHours(23, 59, 59, 999)
+
+    // Create date filter
+    const dateFilter = {
+      createdAt: {
+        $gte: startDate,
+        $lte: endDate,
+      },
+    }
+
+    console.log("Sales stats - Date filter:", dateFilter)
+
+    // Get all sales (both completed and pending)
+    const allSales = await Sale.find(dateFilter)
+
+    console.log(`Found ${allSales.length} sales in the given date range`)
+
+    // Calculate totals
+    let totalRevenue = 0
+    let totalProfit = 0
+    let completedSalesCount = 0
+
+    // Process each sale
+    for (const sale of allSales) {
+      // Include both pending and completed sales in revenue and profit calculations
+
+      // Add sale total to revenue
+      totalRevenue += sale.total || 0
+
+      // Calculate profit for this sale
+      let saleProfit = 0
+
+      // Check if products exists and is an array
+      if (sale.products && Array.isArray(sale.products)) {
+        // Process each product in the sale
+        for (const item of sale.products) {
+          // Calculate profit (price - cost) * quantity
+          const itemPrice = item.price || 0
+          const itemCost = item.cost || 0
+          const itemQuantity = item.quantity || 0
+
+          const itemProfit = (itemPrice - itemCost) * itemQuantity
+          console.log(`Item profit calculation: (${itemPrice} - ${itemCost}) * ${itemQuantity} = ${itemProfit}`)
+
+          saleProfit += itemProfit
+        }
+      } else {
+        console.log("Sale has no products array or it's not an array:", sale._id)
       }
-    } else if (startDate) {
-      dateQuery.date = { $gte: new Date(startDate) }
-    } else if (endDate) {
-      dateQuery.date = { $lte: new Date(endDate) }
-    } else if (period !== "all") {
-      const now = new Date()
-      const periodStartDate = new Date()
 
-      switch (period) {
-        case "today":
-          periodStartDate.setHours(0, 0, 0, 0)
-          break
-        case "yesterday":
-          periodStartDate.setDate(periodStartDate.getDate() - 1)
-          periodStartDate.setHours(0, 0, 0, 0)
-          now.setDate(now.getDate() - 1)
-          now.setHours(23, 59, 59, 999)
-          break
-        case "week":
-          periodStartDate.setDate(periodStartDate.getDate() - 7)
-          break
-        case "month":
-          periodStartDate.setMonth(periodStartDate.getMonth() - 1)
-          break
-        case "year":
-          periodStartDate.setFullYear(periodStartDate.getFullYear() - 1)
-          break
-      }
+      console.log(`Sale ${sale._id} profit: ${saleProfit}`)
+      totalProfit += saleProfit
 
-      dateQuery.date = { $gte: periodStartDate }
-      if (period === "yesterday") {
-        dateQuery.date.$lte = now
+      // Count completed sales separately if needed
+      if (sale.status === "completed") {
+        completedSalesCount++
       }
     }
 
-    // Get total sales and profit
-    const completedSales = await Sale.find({
-      ...dateQuery,
-      status: "Completed",
-    })
-
-    const totalSales = completedSales.length
-    const totalRevenue = completedSales.reduce((sum, sale) => sum + sale.total, 0)
-    const totalProfit = completedSales.reduce((sum, sale) => sum + sale.profit, 0)
-
-    // Get sales by category
-    const salesByCategory = await Sale.aggregate([
-      { $match: { ...dateQuery, status: "Completed" } },
-      { $unwind: "$items" },
-      {
-        $lookup: {
-          from: "products",
-          localField: "items.product",
-          foreignField: "_id",
-          as: "productInfo",
-        },
-      },
-      { $unwind: "$productInfo" },
-      {
-        $group: {
-          _id: "$productInfo.category",
-          sales: { $sum: "$items.total" },
-        },
-      },
-      { $sort: { sales: -1 } },
-    ])
-
-    // Get top products
-    const topProducts = await Sale.aggregate([
-      { $match: { ...dateQuery, status: "Completed" } },
-      { $unwind: "$items" },
-      {
-        $group: {
-          _id: "$items.product",
-          productName: { $first: "$items.productName" },
-          sku: { $first: "$items.sku" },
-          quantity: { $sum: "$items.quantity" },
-          sales: { $sum: "$items.total" },
-        },
-      },
-      { $sort: { sales: -1 } },
-      { $limit: 5 },
-    ])
-
-    return NextResponse.json({
-      totalSales,
+    // Log the results for debugging
+    console.log("Sales stats results:", {
+      totalSales: allSales.length,
+      completedSales: completedSalesCount,
       totalRevenue,
       totalProfit,
-      salesByCategory,
-      topProducts,
+      dateRange: { startDate, endDate },
+    })
+
+    return NextResponse.json({
+      totalSales: allSales.length,
+      completedSales: completedSalesCount,
+      totalRevenue,
+      totalProfit,
     })
   } catch (error) {
     console.error("Error fetching sales stats:", error)

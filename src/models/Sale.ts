@@ -1,73 +1,106 @@
-import mongoose, { Schema, type Document, type Model } from "mongoose"
+import mongoose, { Schema, type Document } from "mongoose"
 
-export interface ISaleItem {
-  product: mongoose.Types.ObjectId
-  productName: string
-  sku: string
-  quantity: number
+// Define the interface for a product in a sale
+export interface SaleProduct {
+  product: mongoose.Types.ObjectId | string
+  name: string
   price: number
   cost: number
-  total: number
-  variant?: string // Added variant property
+  quantity: number
 }
 
+// Define the interface for a sale document
 export interface ISale extends Document {
-  customer: string
-  date: Date
-  items: ISaleItem[]
-  subtotal: number
-  tax: number
+  customer: {
+    name: string
+    email?: string
+    phone?: string
+  }
+  products: SaleProduct[]
   total: number
-  profit: number
   paymentMethod: string
-  notes: string
-  status: "Completed" | "Pending" | "Cancelled"
+  status: "pending" | "completed" | "cancelled"
+  notes?: string
   createdAt: Date
   updatedAt: Date
 }
 
-const SaleItemSchema = new Schema<ISaleItem>({
-  product: { type: Schema.Types.ObjectId, ref: "Product", required: true },
-  productName: { type: String, required: true },
-  sku: { type: String, required: true },
-  quantity: { type: Number, required: true },
-  price: { type: Number, required: true },
-  cost: { type: Number, required: true },
-  total: { type: Number, required: true },
+// Define the schema for a product in a sale
+const SaleProductSchema = new Schema({
+  product: {
+    type: Schema.Types.ObjectId,
+    ref: "Product",
+    required: true,
+  },
+  name: {
+    type: String,
+    required: true,
+  },
+  price: {
+    type: Number,
+    required: true,
+  },
+  cost: {
+    type: Number,
+    required: true,
+  },
+  quantity: {
+    type: Number,
+    required: true,
+    min: 1,
+  },
 })
 
-const SaleSchema = new Schema<ISale>(
+// Define the schema for a sale
+const SaleSchema = new Schema(
   {
-    customer: { type: String, required: true },
-    date: { type: Date, default: Date.now },
-    items: [SaleItemSchema],
-    subtotal: { type: Number, required: true },
-    tax: { type: Number, required: true },
-    total: { type: Number, required: true },
-    profit: { type: Number, required: true },
-    paymentMethod: { type: String, required: true },
-    notes: { type: String },
+    customer: {
+      name: {
+        type: String,
+        required: true,
+      },
+      email: String,
+      phone: String,
+    },
+    products: {
+      type: [SaleProductSchema],
+      required: true,
+      validate: {
+        validator: (products: any[]) => products && products.length > 0,
+        message: "A sale must have at least one product",
+      },
+    },
+    total: {
+      type: Number,
+      required: true,
+      min: 0,
+    },
+    paymentMethod: {
+      type: String,
+      required: true,
+      enum: ["cash", "credit", "debit", "check", "other"],
+    },
     status: {
       type: String,
-      enum: ["Completed", "Pending", "Cancelled"],
-      default: "Completed",
+      required: true,
+      enum: ["pending", "completed", "cancelled"],
+      default: "pending",
+    },
+    notes: String,
+    createdAt: {
+      type: Date,
+      default: Date.now,
+    },
+    updatedAt: {
+      type: Date,
+      default: Date.now,
     },
   },
-  { timestamps: true },
+  {
+    timestamps: true,
+  },
 )
 
-// Calculate profit before saving
-SaleSchema.pre("save", function (next) {
-  let totalCost = 0
-  this.items.forEach((item) => {
-    totalCost += item.cost * item.quantity
-  })
-  this.profit = this.subtotal - totalCost
-  next()
-})
-
-// Prevent model overwrite error in development with hot reloading
-const Sale: Model<ISale> = mongoose.models.Sale || mongoose.model<ISale>("Sale", SaleSchema)
-
-export default Sale
+// Create and export the Sale model
+export default mongoose.models.Sale || mongoose.model<ISale>("Sale", SaleSchema)
 

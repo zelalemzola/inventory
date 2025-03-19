@@ -1,9 +1,9 @@
-import {  NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import dbConnect from "@/lib/db"
 import Product from "@/models/Product"
 import { isValidObjectId } from "mongoose"
 
-export async function GET(req, { params }) {
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     await dbConnect()
 
@@ -24,7 +24,7 @@ export async function GET(req, { params }) {
   }
 }
 
-export async function PUT(req, { params }) {
+export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     await dbConnect()
 
@@ -37,7 +37,7 @@ export async function PUT(req, { params }) {
 
     // If product has variants, calculate stock as sum of variant stocks
     if (data.variants && data.variants.length > 0) {
-      data.stock = data.variants.reduce((total, variant) => total + (variant.stock || 0), 0)
+      data.stock = data.variants.reduce((total: number, variant: any) => total + (variant.stock || 0), 0)
     }
 
     // Update status based on stock level
@@ -61,7 +61,7 @@ export async function PUT(req, { params }) {
   }
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     await dbConnect()
 

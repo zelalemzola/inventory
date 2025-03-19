@@ -11,7 +11,7 @@ import { RecentSales } from "@/components/dashboard/recent-sales"
 import { MainNav } from "@/components/dashboard/main-nav"
 import { UserNav } from "@/components/dashboard/user-nav"
 import { StockAlerts } from "@/components/dashboard/stock-alerts"
-import { toast } from "sonner"
+import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { ProfitMargin } from "@/components/dashboard/profit-margin"
 import { ProfitTracking } from "@/components/dashboard/profit-tracking"
@@ -26,40 +26,150 @@ export default function DashboardPage() {
     totalSales: 0,
     lowStockItems: 0,
     totalProfit: 0,
+    revenueChange: 0,
+    inventoryChange: 0,
+    salesChange: 0,
+    lowStockChange: 0,
+    profitChange: 0,
   })
   const [loading, setLoading] = useState(true)
-  
+  const [error, setError] = useState<string | null>(null)
+  const { toast } = useToast()
   const router = useRouter()
 
   useEffect(() => {
     const fetchDashboardStats = async () => {
       try {
         setLoading(true)
+        setError(null)
 
-        // Fetch product stats
-        const productStatsResponse = await axios.get("/api/products/stats")
+        console.log("Fetching dashboard stats...")
 
-        // Fetch sales stats
-        const salesStatsResponse = await axios.get("/api/sales/stats")
+        // Fetch product stats - For inventory value and low stock items
+        let productStats
+        try {
+          const productStatsResponse = await axios.get("/api/products/stats")
+          console.log("Product stats response:", productStatsResponse.data)
+          productStats = productStatsResponse.data
+        } catch (err) {
+          console.error("Error fetching product stats:", err)
+          productStats = { inventoryValue: 0, lowStock: 0, outOfStock: 0, lowStockChange: 0 }
+          toast({
+            title: "Warning",
+            description: "Failed to load product statistics. Some data may be missing.",
+            variant: "destructive",
+          })
+        }
 
+        // Fetch sales stats for current period (last month to now)
+        const now = new Date()
+        const oneMonthAgo = new Date()
+        oneMonthAgo.setMonth(now.getMonth() - 1)
+
+        // Fetch sales stats with retry logic
+        let currentSalesStats
+        let retries = 0
+        const maxRetries = 3
+
+        while (retries < maxRetries) {
+          try {
+            console.log(`Attempt ${retries + 1} to fetch current sales stats...`)
+            const salesStatsResponse = await axios.get("/api/sales/stats", {
+              params: {
+                startDate: oneMonthAgo.toISOString(),
+                endDate: now.toISOString(),
+              },
+            })
+            console.log("Sales stats response:", salesStatsResponse.data)
+            currentSalesStats = salesStatsResponse.data
+            break // Success, exit the retry loop
+          } catch (err) {
+            console.error(`Error fetching current sales stats (attempt ${retries + 1}):`, err)
+            retries++
+            if (retries === maxRetries) {
+              currentSalesStats = { totalSales: 0, totalRevenue: 0, totalProfit: 0 }
+              toast({
+                title: "Warning",
+                description: "Failed to load sales statistics after multiple attempts. Some data may be missing.",
+                variant: "destructive",
+              })
+            } else {
+              // Wait before retrying (exponential backoff)
+              await new Promise((resolve) => setTimeout(resolve, 1000 * retries))
+            }
+          }
+        }
+
+        // Fetch previous period stats for comparison (two months ago to one month ago)
+        const twoMonthsAgo = new Date()
+        twoMonthsAgo.setMonth(now.getMonth() - 2)
+
+        let previousSalesStats
+        try {
+          const previousPeriodSalesResponse = await axios.get("/api/sales/stats", {
+            params: {
+              startDate: twoMonthsAgo.toISOString(),
+              endDate: oneMonthAgo.toISOString(),
+            },
+          })
+          console.log("Previous period sales response:", previousPeriodSalesResponse.data)
+          previousSalesStats = previousPeriodSalesResponse.data
+        } catch (err) {
+          console.error("Error fetching previous sales stats:", err)
+          previousSalesStats = { totalSales: 0, totalRevenue: 0, totalProfit: 0 }
+        }
+
+        // Calculate percentage changes
+        const calculatePercentChange = (current: number, previous: number) => {
+          if (previous === 0) return current > 0 ? 100 : 0
+          return ((current - previous) / previous) * 100
+        }
+
+        // Extract values with fallbacks to 0 if undefined
+        const currentRevenue = currentSalesStats?.totalRevenue || 0
+        const previousRevenue = previousSalesStats?.totalRevenue || 0
+        const revenueChange = calculatePercentChange(currentRevenue, previousRevenue)
+
+        const currentSales = currentSalesStats?.totalSales || 0
+        const previousSales = previousSalesStats?.totalSales || 0
+        const salesChange = calculatePercentChange(currentSales, previousSales)
+
+        const currentProfit = currentSalesStats?.totalProfit || 0
+        const previousProfit = previousSalesStats?.totalProfit || 0
+        const profitChange = calculatePercentChange(currentProfit, previousProfit)
+
+        // For inventory, we don't have historical data in this example
+        const inventoryChange = 0 // Default to 0 if no historical data
+
+        // Set the stats with actual data from responses
         setStats({
-          totalRevenue: salesStatsResponse.data.totalRevenue || 0,
-          inventoryValue: productStatsResponse.data.inventoryValue || 0,
-          totalSales: salesStatsResponse.data.totalSales || 0,
-          lowStockItems: productStatsResponse.data.lowStock + productStatsResponse.data.outOfStock || 0,
-          totalProfit: salesStatsResponse.data.totalProfit || 0,
+          totalRevenue: currentRevenue,
+          inventoryValue: productStats?.inventoryValue || 0,
+          totalSales: currentSales,
+          lowStockItems: (productStats?.lowStock || 0) + (productStats?.outOfStock || 0),
+          totalProfit: currentProfit,
+          revenueChange,
+          inventoryChange,
+          salesChange,
+          lowStockChange: productStats?.lowStockChange || 0,
+          profitChange,
         })
-      } catch (error) {
-        console.error("Error fetching dashboard stats:", error)
-        toast.error("Failed to load dashboard statistics")
 
-        // Set some fallback data
-        setStats({
-          totalRevenue: 15250.75,
-          inventoryValue: 42680.5,
-          totalSales: 87,
-          lowStockItems: 12,
-          totalProfit: 6320.25,
+        console.log("Dashboard stats set:", {
+          totalRevenue: currentRevenue,
+          inventoryValue: productStats?.inventoryValue || 0,
+          totalSales: currentSales,
+          lowStockItems: (productStats?.lowStock || 0) + (productStats?.outOfStock || 0),
+          totalProfit: currentProfit,
+          profitChange,
+        })
+      } catch (error: any) {
+        console.error("Error fetching dashboard statistics:", error)
+        setError("Failed to load dashboard statistics")
+        toast({
+          title: "Error",
+          description: `Failed to load dashboard statistics: ${error.message || "Unknown error"}`,
+          variant: "destructive",
         })
       } finally {
         setLoading(false)
@@ -68,6 +178,12 @@ export default function DashboardPage() {
 
     fetchDashboardStats()
   }, [toast])
+
+  // Format percentage with + sign for positive values
+  const formatPercentage = (value: number) => {
+    const sign = value > 0 ? "+" : ""
+    return `${sign}${value.toFixed(1)}%`
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -95,6 +211,14 @@ export default function DashboardPage() {
             </Button>
           </div>
         </div>
+
+        {error && (
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4">
+            <strong className="font-bold">Error: </strong>
+            <span className="block sm:inline">{error}</span>
+          </div>
+        )}
+
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -103,9 +227,19 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ${loading ? "..." : new Intl.NumberFormat("en-US").format(stats.totalRevenue)}
+                {loading ? (
+                  <div className="h-7 w-24 bg-gray-200 animate-pulse rounded"></div>
+                ) : (
+                  `$${new Intl.NumberFormat("en-US").format(stats.totalRevenue)}`
+                )}
               </div>
-              <p className="text-xs text-muted-foreground">+20.1% from last month</p>
+              <p className={`text-xs ${stats.revenueChange >= 0 ? "text-green-500" : "text-red-500"}`}>
+                {loading ? (
+                  <div className="h-4 w-32 bg-gray-200 animate-pulse rounded mt-1"></div>
+                ) : (
+                  `${formatPercentage(stats.revenueChange)} from last month`
+                )}
+              </p>
             </CardContent>
           </Card>
           <Card>
@@ -115,9 +249,19 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                ${loading ? "..." : new Intl.NumberFormat("en-US").format(stats.inventoryValue)}
+                {loading ? (
+                  <div className="h-7 w-24 bg-gray-200 animate-pulse rounded"></div>
+                ) : (
+                  `$${new Intl.NumberFormat("en-US").format(stats.inventoryValue)}`
+                )}
               </div>
-              <p className="text-xs text-muted-foreground">+4.3% from last month</p>
+              <p className={`text-xs ${stats.inventoryChange >= 0 ? "text-green-500" : "text-red-500"}`}>
+                {loading ? (
+                  <div className="h-4 w-32 bg-gray-200 animate-pulse rounded mt-1"></div>
+                ) : (
+                  `${formatPercentage(stats.inventoryChange)} from last month`
+                )}
+              </p>
             </CardContent>
           </Card>
           <Card>
@@ -127,9 +271,19 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                +{loading ? "..." : new Intl.NumberFormat("en-US").format(stats.totalSales)}
+                {loading ? (
+                  <div className="h-7 w-24 bg-gray-200 animate-pulse rounded"></div>
+                ) : (
+                  `${new Intl.NumberFormat("en-US").format(stats.totalSales)}`
+                )}
               </div>
-              <p className="text-xs text-muted-foreground">+12.5% from last month</p>
+              <p className={`text-xs ${stats.salesChange >= 0 ? "text-green-500" : "text-red-500"}`}>
+                {loading ? (
+                  <div className="h-4 w-32 bg-gray-200 animate-pulse rounded mt-1"></div>
+                ) : (
+                  `${formatPercentage(stats.salesChange)} from last month`
+                )}
+              </p>
             </CardContent>
           </Card>
           <Card>
@@ -139,9 +293,19 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {loading ? "..." : new Intl.NumberFormat("en-US").format(stats.lowStockItems)}
+                {loading ? (
+                  <div className="h-7 w-24 bg-gray-200 animate-pulse rounded"></div>
+                ) : (
+                  `${new Intl.NumberFormat("en-US").format(stats.lowStockItems)}`
+                )}
               </div>
-              <p className="text-xs text-muted-foreground">+2 since yesterday</p>
+              <p className={`text-xs ${stats.lowStockChange <= 0 ? "text-green-500" : "text-red-500"}`}>
+                {loading ? (
+                  <div className="h-4 w-32 bg-gray-200 animate-pulse rounded mt-1"></div>
+                ) : (
+                  `${stats.lowStockChange > 0 ? "+" : ""}${stats.lowStockChange} since yesterday`
+                )}
+              </p>
             </CardContent>
           </Card>
           <Card>
@@ -151,9 +315,19 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold text-green-600">
-                ${loading ? "..." : new Intl.NumberFormat("en-US").format(stats.totalProfit)}
+                {loading ? (
+                  <div className="h-7 w-24 bg-gray-200 animate-pulse rounded"></div>
+                ) : (
+                  `$${new Intl.NumberFormat("en-US").format(stats.totalProfit)}`
+                )}
               </div>
-              <p className="text-xs text-muted-foreground">+15.2% from last month</p>
+              <p className={`text-xs ${stats.profitChange >= 0 ? "text-green-500" : "text-red-500"}`}>
+                {loading ? (
+                  <div className="h-4 w-32 bg-gray-200 animate-pulse rounded mt-1"></div>
+                ) : (
+                  `${formatPercentage(stats.profitChange)} from last month`
+                )}
+              </p>
             </CardContent>
           </Card>
         </div>

@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
 
     // Calculate turnover for each product
     const productTurnover = products.map((product) => {
-      const totalSold = salesMap.get(product.id.toString()) || 0
+      const totalSold = salesMap.get(product._id.toString()) || 0
       const turnover = product.stock > 0 ? totalSold / product.stock : 0
 
       return {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "@/components/ui/chart"
 import axios from "axios"
-import { toast } from "sonner"
+import { useToast } from "@/hooks/use-toast"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
 
@@ -17,7 +17,7 @@ export function ProfitMargin() {
   const [data, setData] = useState<CategoryProfit[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  
+  const { toast } = useToast()
 
   useEffect(() => {
     const fetchCategoryProfitData = async () => {
@@ -35,7 +35,11 @@ export function ProfitMargin() {
       } catch (error) {
         console.error("Error fetching category profit data:", error)
         setError("Failed to load category profit data")
-        toast.error("Failed to load category profit data")
+        toast({
+          title: "Error",
+          description: "Failed to load category profit data",
+          variant: "destructive",
+        })
       } finally {
         setLoading(false)
       }

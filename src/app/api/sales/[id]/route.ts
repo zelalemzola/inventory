@@ -1,10 +1,10 @@
-import {  NextResponse } from "next/server"
+import { type NextRequest, NextResponse } from "next/server"
 import dbConnect from "@/lib/db"
 import Sale from "@/models/Sale"
 import Product from "@/models/Product"
 import { isValidObjectId } from "mongoose"
 
-export async function GET(req, { params }) {
+export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     await dbConnect()
 
@@ -25,7 +25,7 @@ export async function GET(req, { params }) {
   }
 }
 
-export async function PUT(req, { params }) {
+export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     await dbConnect()
 
@@ -65,7 +65,7 @@ export async function PUT(req, { params }) {
   }
 }
 
-export async function DELETE(req, { params }) {
+export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
   try {
     await dbConnect()
 
@@ -96,7 +96,7 @@ export async function DELETE(req, { params }) {
 }
 
 // Helper function to update inventory
-async function updateInventory(items, direction) {
+async function updateInventory(items: any[], direction: number) {
   for (const item of items) {
     const quantity = item.quantity * direction // Positive to add, negative to subtract
 
@@ -104,7 +104,7 @@ async function updateInventory(items, direction) {
       // Update variant stock
       const parentProduct = await Product.findById(item.parentProductId)
       if (parentProduct) {
-        const updatedVariants = parentProduct.variants.map((v) => {
+        const updatedVariants = parentProduct.variants.map((v: any) => {
           if (v.sku === item.sku) {
             return {
               ...v,

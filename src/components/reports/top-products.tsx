@@ -1,88 +1,112 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Badge } from "@/components/ui/badge"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
 import axios from "axios"
-import { toast } from "sonner"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertCircle } from "lucide-react"
+import { Loader2 } from "lucide-react"
 
-type TopProduct = {
-  _id: string
-  productName: string
+interface ProductData {
+  name: string
+  revenue: number
+  count: number
+  profit: number
   category: string
-  sales: number
 }
 
 export function TopProducts() {
-  const [products, setProducts] = useState<TopProduct[]>([])
+  const [data, setData] = useState<ProductData[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-
   useEffect(() => {
-    const fetchTopProducts = async () => {
+    const fetchData = async () => {
       try {
         setLoading(true)
         setError(null)
 
-        const response = await axios.get("/api/sales/stats")
+        console.log("Fetching top products data...")
+        const response = await axios.get("/api/products/top")
+        console.log("Top products data received:", response.data)
 
-        if (response.data && response.data.topProducts) {
-          setProducts(response.data.topProducts)
+        if (response.data && Array.isArray(response.data)) {
+          // Filter out products with zero revenue
+          const validData = response.data.filter((item: ProductData) => item.revenue > 0)
+
+          if (validData.length > 0) {
+            setData(validData)
+          } else {
+            console.log("No products with revenue found")
+            setData([])
+          }
         } else {
-          throw new Error("Invalid response format")
+          console.error("Invalid top products data format:", response.data)
+          setError("Invalid data format received")
         }
-      } catch (error) {
-        console.error("Error fetching top products:", error)
-        setError("Failed to load top products data")
+      } catch (err: any) {
+        console.error("Error fetching top products data:", err)
+        setError(`Failed to load top products data: ${err.message || "Unknown error"}`)
       } finally {
         setLoading(false)
       }
     }
 
-    fetchTopProducts()
-  }, [toast])
+    fetchData()
+  }, [])
 
-  const formatNumber = (num: number) => {
-    return new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "USD",
-    }).format(num)
-  }
-
-  if (loading) {
-    return <div className="flex items-center justify-center h-[300px]">Loading top products data...</div>
-  }
-
-  if (error) {
-    return (
-      <Alert variant="destructive">
-        <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Error</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
-    )
-  }
-
-  if (products.length === 0) {
-    return <div className="flex items-center justify-center h-[300px]">No sales data available</div>
+  // Custom tooltip for the bar chart
+  const CustomTooltip = ({ active, payload, label }: any) => {
+    if (active && payload && payload.length) {
+      return (
+        <div className="bg-background p-2 border rounded shadow-sm">
+          <p className="font-semibold">{label}</p>
+          <p className="text-sm text-blue-600">Revenue: ${payload[0]?.value?.toLocaleString() || 0}</p>
+          <p className="text-sm text-green-600">Profit: ${payload[1]?.value?.toLocaleString() || 0}</p>
+          <p className="text-sm">Items Sold: {payload[2]?.value || 0}</p>
+          <p className="text-sm">Category: {payload[0]?.payload?.category || "Unknown"}</p>
+        </div>
+      )
+    }
+    return null
   }
 
   return (
-    <div className="space-y-8">
-      {products.map((product) => (
-        <div key={product._id} className="flex items-center">
-          <div className="space-y-1">
-            <p className="text-sm font-medium leading-none">{product.productName}</p>
-            <p className="text-sm text-muted-foreground">
-              Category: <Badge variant="outline">{product.category || "Uncategorized"}</Badge>
-            </p>
+    <Card>
+      <CardHeader>
+        <CardTitle>Top Products</CardTitle>
+        <CardDescription>Best performing products by revenue</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="flex justify-center items-center h-80">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
-          <div className="ml-auto font-medium">{formatNumber(product.sales)}</div>
-        </div>
-      ))}
-    </div>
+        ) : error ? (
+          <div className="flex justify-center items-center h-80 text-destructive">
+            <p>{error}</p>
+          </div>
+        ) : data.length === 0 ? (
+          <div className="flex justify-center items-center h-80 text-muted-foreground">
+            <p>No product data available. Try making some sales first.</p>
+          </div>
+        ) : (
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={data} layout="vertical" margin={{ top: 5, right: 30, left: 100, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis type="number" />
+                <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 12 }} />
+                <Tooltip content={<CustomTooltip />} />
+                <Legend />
+                <Bar dataKey="revenue" name="Revenue" fill="#2563eb" />
+                <Bar dataKey="profit" name="Profit" fill="#16a34a" />
+                <Bar dataKey="count" name="Items Sold" fill="#d97706" />
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   )
 }
 

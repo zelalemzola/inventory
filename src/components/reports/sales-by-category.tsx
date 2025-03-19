@@ -1,98 +1,147 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Cell, Legend, Pie, PieChart, ResponsiveContainer, Tooltip } from "@/components/ui/chart"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from "recharts"
 import axios from "axios"
-import { toast } from "sonner"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertCircle } from "lucide-react"
+import { Loader2 } from "lucide-react"
 
-type CategoryData = {
-    name: string
-    value: number
+interface CategoryData {
+  name: string
+  revenue: number
+  count: number
 }
 
 export function SalesByCategory() {
-    const [data, setData] = useState<CategoryData[]>([])
-    const [loading, setLoading] = useState(true)
-    const [error, setError] = useState<string | null>(null)
-    
+  const [data, setData] = useState<CategoryData[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-    useEffect(() => {
-        const fetchSalesByCategory = async () => {
-            try {
-                setLoading(true)
-                setError(null)
+  // Define colors for the pie chart
+  const COLORS = [
+    "#0088FE",
+    "#00C49F",
+    "#FFBB28",
+    "#FF8042",
+    "#8884D8",
+    "#82CA9D",
+    "#A4DE6C",
+    "#D0ED57",
+    "#FFC658",
+    "#FF7300",
+  ]
 
-                const response = await axios.get("/api/sales/stats")
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true)
+        setError(null)
 
-                if (response.data && response.data.salesByCategory) {
-                    // Format the data for the chart
-                    const formattedData = response.data.salesByCategory.map((item: any) => ({
-                        name: item._id || "Uncategorized",
-                        value: item.sales,
-                    }))
+        console.log("Fetching sales by category data...")
+        const response = await axios.get("/api/sales/by-category")
+        console.log("Sales by category data received:", response.data)
 
-                    setData(formattedData)
-                } else {
-                    throw new Error("Invalid response format")
-                }
-            } catch (error) {
-                console.error("Error fetching sales by category:", error)
-                setError("Failed to load sales by category data")
-            } finally {
-                setLoading(false)
-            }
+        if (response.data && Array.isArray(response.data)) {
+          // Filter out categories with zero revenue
+          const validData = response.data.filter((item: CategoryData) => item.revenue > 0)
+
+          if (validData.length > 0) {
+            setData(validData)
+          } else {
+            console.log("No categories with revenue found")
+            setData([])
+          }
+        } else {
+          console.error("Invalid sales by category data format:", response.data)
+          setError("Invalid data format received")
         }
-
-        fetchSalesByCategory()
-    }, [toast])
-
-    const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884d8", "#82ca9d", "#ffc658"]
-
-    const formatNumber = (num: number) => {
-        return new Intl.NumberFormat("en-US").format(num)
+      } catch (err: any) {
+        console.error("Error fetching sales by category data:", err)
+        setError(`Failed to load sales by category data: ${err.message || "Unknown error"}`)
+      } finally {
+        setLoading(false)
+      }
     }
 
-    if (loading) {
-        return <div className="flex items-center justify-center h-[300px]">Loading sales data...</div>
-    }
+    fetchData()
+  }, [])
 
-    if (error) {
-        return (
-            <Alert variant="destructive">
-                <AlertCircle className="h-4 w-4" />
-                <AlertTitle>Error</AlertTitle>
-                <AlertDescription>{error}</AlertDescription>
-            </Alert>
-        )
+  // Custom tooltip for the pie chart
+  const CustomTooltip = ({ active, payload }: any) => {
+    if (active && payload && payload.length) {
+      const data = payload[0].payload
+      return (
+        <div className="bg-background p-2 border rounded shadow-sm">
+          <p className="font-semibold">{data.name}</p>
+          <p className="text-sm">Revenue: ${data.revenue.toLocaleString()}</p>
+          <p className="text-sm">Items Sold: {data.count}</p>
+        </div>
+      )
     }
+    return null
+  }
 
-    if (data.length === 0) {
-        return <div className="flex items-center justify-center h-[300px]">No sales data available</div>
-    }
+  // Format the data for the legend
+  const renderLegend = (props: any) => {
+    const { payload } = props
 
     return (
-        <ResponsiveContainer width="100%" height={300}>
-            <PieChart>
-                <Pie
-                    data={data}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="value"
-                    label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
-                >
-                    {data.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                </Pie>
-                <Tooltip formatter={(value) => [`$${formatNumber(Number(value))}`, "Sales"]} />
-                <Legend />
-            </PieChart>
-        </ResponsiveContainer>
+      <ul className="flex flex-wrap justify-center gap-4 mt-4">
+        {payload.map((entry: any, index: number) => (
+          <li key={`item-${index}`} className="flex items-center">
+            <div className="w-3 h-3 mr-2 rounded-full" style={{ backgroundColor: entry.color }} />
+            <span className="text-xs">{entry.value}</span>
+          </li>
+        ))}
+      </ul>
     )
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Sales by Category</CardTitle>
+        <CardDescription>Revenue distribution across product categories</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {loading ? (
+          <div className="flex justify-center items-center h-80">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : error ? (
+          <div className="flex justify-center items-center h-80 text-destructive">
+            <p>{error}</p>
+          </div>
+        ) : data.length === 0 ? (
+          <div className="flex justify-center items-center h-80 text-muted-foreground">
+            <p>No category data available. Try making some sales first.</p>
+          </div>
+        ) : (
+          <div className="h-80">
+            <ResponsiveContainer width="100%" height="100%">
+              <PieChart>
+                <Pie
+                  data={data}
+                  cx="50%"
+                  cy="50%"
+                  labelLine={false}
+                  outerRadius={80}
+                  fill="#8884d8"
+                  dataKey="revenue"
+                  nameKey="name"
+                >
+                  {data.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+                  ))}
+                </Pie>
+                <Tooltip content={<CustomTooltip />} />
+                <Legend content={renderLegend} />
+              </PieChart>
+            </ResponsiveContainer>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  )
 }
 
