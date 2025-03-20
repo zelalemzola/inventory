@@ -14,7 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { useToast } from "@/hooks/use-toast"
+import {toast} from 'sonner'
 
 const formSchema = z.object({
   companyName: z.string().min(2, {
@@ -32,7 +32,7 @@ const formSchema = z.object({
 
 export function SystemSettings() {
   const [loading, setLoading] = useState(true)
-  const { toast } = useToast()
+  
   const router = useRouter()
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -60,11 +60,7 @@ export function SystemSettings() {
         }
       } catch (error) {
         console.error("Error fetching system settings:", error)
-        toast({
-          title: "Error",
-          description: "Failed to load system settings",
-          variant: "destructive",
-        })
+       toast.error( "Failed to load system settings")
       } finally {
         setLoading(false)
       }
@@ -90,11 +86,7 @@ export function SystemSettings() {
       }
     } catch (error) {
       console.error("Error saving system settings:", error)
-      toast({
-        title: "Error",
-        description: "Failed to save system settings",
-        variant: "destructive",
-      })
+      toast.error("Failed to save system settings")
     }
   }
 

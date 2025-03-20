@@ -23,7 +23,7 @@ export function InventoryFilters({ onFilterChange }: InventoryFiltersProps) {
     lowStock: false,
     outOfStock: false,
   })
-  const { toast } = useToast()
+  
 
   React.useEffect(() => {
     const fetchCategories = async () => {

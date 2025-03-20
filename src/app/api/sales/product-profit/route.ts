@@ -1,107 +1,70 @@
-import { type NextRequest, NextResponse } from "next/server"
-import dbConnect from "@/lib/db"
-import Sale from "@/models/Sale"
+import { NextResponse } from 'next/server';
+import dbConnect from '@/lib/db';
+import Sale from '@/models/Sale';
+import { successResponse, errorResponse } from '@/lib/apiResponse';
 
-export async function GET(req: NextRequest) {
+export async function GET(request: Request) {
   try {
-    await dbConnect()
-
-    // Get query parameters
-    const { searchParams } = new URL(req.url)
-    const period = searchParams.get("period") || "all"
-    const product = searchParams.get("product")
-
-    // Calculate date range based on period
-    let dateFilter = {}
-    const now = new Date()
-
-    if (period === "today") {
-      const startOfDay = new Date(now.setHours(0, 0, 0, 0))
-      dateFilter = { date: { $gte: startOfDay } }
-    } else if (period === "week") {
-      const startOfWeek = new Date(now)
-      startOfWeek.setDate(now.getDate() - now.getDay()) // Start of week (Sunday)
-      startOfWeek.setHours(0, 0, 0, 0)
-      dateFilter = { date: { $gte: startOfWeek } }
-    } else if (period === "month") {
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-      dateFilter = { date: { $gte: startOfMonth } }
-    } else if (period === "year") {
-      const startOfYear = new Date(now.getFullYear(), 0, 1)
-      dateFilter = { date: { $gte: startOfYear } }
+    await dbConnect();
+    
+    const { searchParams } = new URL(request.url);
+    const productId = searchParams.get('productId');
+    
+    if (!productId) {
+      return NextResponse.json(
+        errorResponse('Product ID is required', 400),
+        { status: 400 }
+      );
     }
-
-    // Build match query
-    const matchQuery: any = {
-      status: "Completed",
-      ...dateFilter,
+    
+    // Get all completed sales for this product
+    const sales = await Sale.find({
+      status: 'Completed',
+      'items.productId': productId
+    });
+    
+    // Initialize data
+    let totalRevenue = 0;
+    let totalCost = 0;
+    let totalProfit = 0;
+    let totalQuantity = 0;
+    
+    // Process each sale
+    for (const sale of sales) {
+      for (const item of sale.items) {
+        if (item.productId.toString() === productId) {
+          const itemRevenue = item.price * item.quantity;
+          const itemCost = item.cost * item.quantity;
+          const itemProfit = itemRevenue - itemCost;
+          
+          totalRevenue += itemRevenue;
+          totalCost += itemCost;
+          totalProfit += itemProfit;
+          totalQuantity += item.quantity;
+        }
+      }
     }
-
-    // Aggregate sales data to get profit by product
-    const productProfit = await Sale.aggregate([
-      { $match: matchQuery },
-      { $unwind: "$items" },
-      ...(product ? [{ $match: { "items.productName": product } }] : []),
-      {
-        $group: {
-          _id: "$items.productName",
-          profit: { $sum: { $multiply: [{ $subtract: ["$items.price", "$items.cost"] }, "$items.quantity"] } },
-          sales: { $sum: "$items.quantity" },
-          revenue: { $sum: { $multiply: ["$items.price", "$items.quantity"] } },
-        },
-      },
-      {
-        $project: {
-          name: "$_id",
-          profit: 1,
-          sales: 1,
-          revenue: 1,
-          _id: 0,
-        },
-      },
-      { $sort: { profit: -1 } },
-      { $limit: 10 },
-    ])
-
-    // Aggregate sales data to get profit by variant
-    const variantProfit = await Sale.aggregate([
-      { $match: matchQuery },
-      { $unwind: "$items" },
-      { $match: { "items.variant": { $exists: true, $ne: null } } },
-      ...(product ? [{ $match: { "items.productName": product } }] : []),
-      {
-        $group: {
-          _id: {
-            product: "$items.productName",
-            variant: "$items.variant",
-          },
-          profit: { $sum: { $multiply: [{ $subtract: ["$items.price", "$items.cost"] }, "$items.quantity"] } },
-          sales: { $sum: "$items.quantity" },
-          revenue: { $sum: { $multiply: ["$items.price", "$items.quantity"] } },
-        },
-      },
-      {
-        $project: {
-          name: { $concat: ["$_id.product", " (", "$_id.variant", ")"] },
-          product: "$_id.product",
-          variant: "$_id.variant",
-          profit: 1,
-          sales: 1,
-          revenue: 1,
-          _id: 0,
-        },
-      },
-      { $sort: { profit: -1 } },
-      { $limit: 20 },
-    ])
-
-    return NextResponse.json({
-      productProfit,
-      variantProfit,
-    })
-  } catch (error) {
-    console.error("Error fetching product profit:", error)
-    return NextResponse.json({ error: "Failed to fetch product profit" }, { status: 500 })
+    
+    // Calculate profit margin
+    const profitMargin = totalRevenue > 0 ? (totalProfit / totalRevenue) * 100 : 0;
+    
+    const data = {
+      totalRevenue,
+      totalCost,
+      totalProfit,
+      totalQuantity,
+      profitMargin
+    };
+    
+    return NextResponse.json(
+      successResponse(data, 'Product profit data retrieved successfully')
+    );
+  } catch (error: any) {
+    console.error('Error fetching product profit:', error);
+    return NextResponse.json(
+      errorResponse('Failed to fetch product profit', 500, error),
+      { status: 500 }
+    );
   }
 }
 

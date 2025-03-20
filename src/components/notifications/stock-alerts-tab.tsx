@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
 import { Button } from "@/components/ui/button"
-import { useToast } from "@/hooks/use-toast"
+import {toast} from 'sonner'
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
 type Product = {
@@ -43,7 +43,7 @@ export function StockAlertsTab() {
   const [alertItems, setAlertItems] = useState<AlertItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { toast } = useToast()
+  
 
   useEffect(() => {
     fetchLowStockItems()

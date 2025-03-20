@@ -3,129 +3,99 @@
 import { useEffect, useState } from "react"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import axios from "axios"
-import { useToast } from "@/hooks/use-toast"
-import Link from "next/link"
 
-type RecentSale = {
+interface SaleItem {
   _id: string
-  customer: string
-  total: number
-  date: string
-  status: string
+  customer: {
+    name: string
+    email?: string
+  }
+  totalAmount: number
+  createdAt: string
 }
 
 export function RecentSales() {
-  const [sales, setSales] = useState<RecentSale[]>([])
-  const [loading, setLoading] = useState(true)
-  const { toast } = useToast()
+  const [sales, setSales] = useState<SaleItem[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchRecentSales = async () => {
       try {
-        setLoading(true)
+        setIsLoading(true)
+        setError(null)
+
         const response = await axios.get("/api/sales", {
           params: {
             limit: 5,
             page: 1,
-            sortBy: "date",
-            sortOrder: "desc",
           },
         })
 
-        if (response.data && response.data.sales) {
-          setSales(response.data.sales)
+        if (response.data && response.data.success && response.data.data && response.data.data.sales) {
+          setSales(response.data.data.sales)
+        } else {
+          setError("Invalid data format received from server")
         }
-      } catch (error) {
-        console.error("Error fetching recent sales:", error)
-        toast({
-          title: "Error",
-          description: "Failed to load recent sales",
-          variant: "destructive",
-        })
+      } catch (err: any) {
+        console.error("Error fetching recent sales:", err)
+        setError(err.message || "Failed to load recent sales")
       } finally {
-        setLoading(false)
+        setIsLoading(false)
       }
     }
 
     fetchRecentSales()
-  }, [toast])
+  }, [])
 
-  // Function to get initials from customer name
-  const getInitials = (name: string) => {
-    return name
-      .split(" ")
-      .map((part) => part.charAt(0))
-      .join("")
-      .toUpperCase()
-      .substring(0, 2)
-  }
-
-  // Function to get a consistent color based on customer name
-  const getAvatarColor = (name: string) => {
-    const colors = [
-      "bg-red-500",
-      "bg-green-500",
-      "bg-blue-500",
-      "bg-yellow-500",
-      "bg-purple-500",
-      "bg-pink-500",
-      "bg-indigo-500",
-      "bg-teal-500",
-    ]
-
-    // Simple hash function to get a consistent index
-    const hash = name.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0)
-    return colors[hash % colors.length]
-  }
-
-  // Format date to a readable string
-  const formatDate = (dateString: string) => {
-    const date = new Date(dateString)
-    return date.toLocaleDateString("en-US", {
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    })
-  }
-
-  if (loading) {
+  if (isLoading) {
     return (
-      <div className="space-y-4">
+      <div className="space-y-8">
         {[...Array(5)].map((_, i) => (
           <div key={i} className="flex items-center animate-pulse">
-            <div className="h-9 w-9 rounded-full bg-gray-200 mr-3"></div>
-            <div className="space-y-2 flex-1">
-              <div className="h-4 bg-gray-200 rounded w-1/3"></div>
-              <div className="h-3 bg-gray-200 rounded w-1/4"></div>
+            <div className="h-9 w-9 rounded-full bg-gray-200"></div>
+            <div className="ml-4 space-y-1 flex-1">
+              <div className="h-4 w-24 bg-gray-200 rounded"></div>
+              <div className="h-3 w-32 bg-gray-200 rounded"></div>
             </div>
-            <div className="h-4 bg-gray-200 rounded w-16"></div>
+            <div className="h-4 w-16 bg-gray-200 rounded"></div>
           </div>
         ))}
       </div>
     )
   }
 
+  if (error) {
+    return (
+      <div className="p-4 bg-red-50 rounded-md">
+        <p className="text-red-500">Error: {error}</p>
+      </div>
+    )
+  }
+
   if (sales.length === 0) {
-    return <div className="text-center py-4 text-muted-foreground">No recent sales found.</div>
+    return (
+      <div className="p-4 text-center">
+        <p className="text-muted-foreground">No recent sales found</p>
+      </div>
+    )
   }
 
   return (
     <div className="space-y-8">
       {sales.map((sale) => (
         <div key={sale._id} className="flex items-center">
-          <Avatar className={`h-9 w-9 ${getAvatarColor(sale.customer)}`}>
-            <AvatarFallback>{getInitials(sale.customer)}</AvatarFallback>
+          <Avatar className="h-9 w-9">
+            <AvatarFallback>{sale.customer.name.substring(0, 2).toUpperCase()}</AvatarFallback>
           </Avatar>
           <div className="ml-4 space-y-1">
-            <Link href={`/sales/${sale._id}`} className="text-sm font-medium leading-none hover:underline">
-              {sale.customer}
-            </Link>
-            <p className="text-sm text-muted-foreground">
-              {formatDate(sale.date)} • {sale.status}
-            </p>
+            <p className="text-sm font-medium leading-none">{sale.customer.name}</p>
+            <p className="text-sm text-muted-foreground">{sale.customer.email || "No email provided"}</p>
           </div>
-          <div className="ml-auto font-medium">+${sale.total.toFixed(2)}</div>
+          <div className="ml-auto font-medium">
+            ${sale.totalAmount.toFixed(2)}
+            <div className="text-xs text-muted-foreground">{new Date(sale.createdAt).toLocaleDateString()}</div>
+          </div>
         </div>
       ))}
     </div>

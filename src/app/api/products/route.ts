@@ -1,109 +1,113 @@
-import { type NextRequest, NextResponse } from "next/server"
-import dbConnect from "@/lib/db"
-import Product from "@/models/Product"
+import { NextResponse } from 'next/server';
+import dbConnect from '@/lib/db';
+import Product from '@/models/Product';
+import { successResponse, errorResponse } from '@/lib/apiResponse';
 
-export async function GET(req: NextRequest) {
+export async function GET(request: Request) {
   try {
-    await dbConnect()
-
-    const url = new URL(req.url)
-    const searchParams = url.searchParams
-    const name = searchParams.get("name")
-    const category = searchParams.get("category")
-    const status = searchParams.get("status")
-    const minStock = searchParams.get("minStock")
-    const maxStock = searchParams.get("maxStock")
-    const sortBy = searchParams.get("sortBy") || "name"
-    const sortOrder = searchParams.get("sortOrder") || "asc"
-    const limit = Number.parseInt(searchParams.get("limit") || "100")
-    const page = Number.parseInt(searchParams.get("page") || "1")
-
-    const skip = (page - 1) * limit
-
-    // Build query
-    const query: any = {}
-
-    if (name) {
-      query.name = { $regex: name, $options: "i" }
+    await dbConnect();
+    
+    const { searchParams } = new URL(request.url);
+    const category = searchParams.get('category');
+    const search = searchParams.get('search');
+    const lowStock = searchParams.get('lowStock');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
+    const skip = (page - 1) * limit;
+    
+    let query: any = {};
+    
+    if (category && category !== 'all') {
+      query.category = category;
     }
-
-    if (category) {
-      query.category = category
+    
+    if (search) {
+      query.name = { $regex: search, $options: 'i' };
     }
-
-    if (status) {
-      // Handle comma-separated status values
-      if (status.includes(",")) {
-        const statusArray = status.split(",").map((s) => s.trim())
-        query.status = { $in: statusArray }
-      } else {
-        query.status = status
-      }
+    
+    const products = await Product.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit);
+    const total = await Product.countDocuments(query);
+    
+    // Filter for low stock if needed
+    let filteredProducts = products;
+    if (lowStock === 'true') {
+      filteredProducts = products.filter(product => product.hasLowStock);
     }
-
-    if (minStock) {
-      query.stock = { ...query.stock, $gte: Number.parseInt(minStock) }
-    }
-
-    if (maxStock) {
-      query.stock = { ...query.stock, $lte: Number.parseInt(maxStock) }
-    }
-
-    // Build sort object
-    const sort: any = {}
-    sort[sortBy] = sortOrder === "desc" ? -1 : 1
-
-    const products = await Product.find(query).sort(sort).skip(skip).limit(limit)
-    const total = await Product.countDocuments(query)
-
-    return NextResponse.json({
-      products,
-      pagination: {
-        total,
-        page,
-        limit,
-        pages: Math.ceil(total / limit),
-      },
-    })
-  } catch (error) {
-    console.error("Error fetching products:", error)
-    return NextResponse.json({ error: "Failed to fetch products" }, { status: 500 })
+    
+    return NextResponse.json(
+      successResponse({
+        products: filteredProducts,
+        pagination: {
+          total,
+          page,
+          limit,
+          pages: Math.ceil(total / limit)
+        }
+      }, 'Products retrieved successfully')
+    );
+  } catch (error: any) {
+    console.error('Error fetching products:', error);
+    return NextResponse.json(
+      errorResponse('Failed to fetch products', 500, error),
+      { status: 500 }
+    );
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
   try {
-    await dbConnect()
-
-    const data = await req.json()
-
-    // Check if SKU already exists
-    const existingSku = await Product.findOne({ sku: data.sku })
-    if (existingSku) {
-      return NextResponse.json({ error: "SKU already exists" }, { status: 400 })
+    await dbConnect();
+    
+    const body = await request.json();
+    
+    // Validate required fields
+    if (!body.name || !body.description || !body.category) {
+      return NextResponse.json(
+        errorResponse('Missing required fields', 400),
+        { status: 400 }
+      );
     }
-
-    // If product has variants, calculate stock as sum of variant stocks
-    if (data.variants && data.variants.length > 0) {
-      data.stock = data.variants.reduce((total: number, variant: any) => total + (variant.stock || 0), 0)
+    
+    // Ensure variants is an array
+    if (!Array.isArray(body.variants) || body.variants.length === 0) {
+      return NextResponse.json(
+        errorResponse('At least one variant is required', 400),
+        { status: 400 }
+      );
     }
-
-    // Set status based on stock level
-    if (data.stock <= 0) {
-      data.status = "Out of Stock"
-    } else if (data.stock <= data.minStockLevel) {
-      data.status = "Low Stock"
-    } else {
-      data.status = "In Stock"
+    
+    // Validate each variant
+    for (const variant of body.variants) {
+      if (!variant.name || !variant.sku || variant.cost === undefined || variant.price === undefined) {
+        return NextResponse.json(
+          errorResponse('Each variant must have name, sku, cost, and price', 400),
+          { status: 400 }
+        );
+      }
     }
-
-    // Create the product
-    const product = await Product.create(data)
-
-    return NextResponse.json(product, { status: 201 })
-  } catch (error) {
-    console.error("Error creating product:", error)
-    return NextResponse.json({ error: "Failed to create product" }, { status: 500 })
+    
+    const newProduct = new Product(body);
+    await newProduct.save();
+    
+    return NextResponse.json(
+      successResponse(newProduct, 'Product created successfully'),
+      { status: 201 }
+    );
+  } catch (error: any) {
+    console.error('Error creating product:', error);
+    
+    // Handle duplicate SKU error
+    if (error.code === 11000) {
+      return NextResponse.json(
+        errorResponse('A variant with this SKU already exists', 400, error),
+        { status: 400 }
+      );
+    }
+    
+    return NextResponse.json(
+      errorResponse('Failed to create product', 500, error),
+      { status: 500 }
+    );
   }
 }
 

@@ -1,110 +1,117 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import axios from "axios"
-import { Loader2 } from "lucide-react"
 
-interface ProductData {
-  name: string
-  revenue: number
-  count: number
-  profit: number
-  category: string
+interface TopProduct {
+  _id: string
+  productName: string
+  totalSales: number
+  totalRevenue: number
+  totalProfit: number
 }
 
 export function TopProducts() {
-  const [data, setData] = useState<ProductData[]>([])
-  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<TopProduct[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        setLoading(true)
+        setIsLoading(true)
         setError(null)
 
-        console.log("Fetching top products data...")
         const response = await axios.get("/api/products/top")
-        console.log("Top products data received:", response.data)
 
-        if (response.data && Array.isArray(response.data)) {
-          // Filter out products with zero revenue
-          const validData = response.data.filter((item: ProductData) => item.revenue > 0)
-
-          if (validData.length > 0) {
-            setData(validData)
-          } else {
-            console.log("No products with revenue found")
-            setData([])
-          }
+        if (response.data && response.data.success && Array.isArray(response.data.data)) {
+          // Take only top 10 products
+          setData(response.data.data.slice(0, 10))
         } else {
-          console.error("Invalid top products data format:", response.data)
-          setError("Invalid data format received")
+          setError("Invalid data format received from server")
         }
       } catch (err: any) {
-        console.error("Error fetching top products data:", err)
-        setError(`Failed to load top products data: ${err.message || "Unknown error"}`)
+        console.error("Error fetching top products:", err)
+        setError(err.message || "Failed to load top products data")
       } finally {
-        setLoading(false)
+        setIsLoading(false)
       }
     }
 
     fetchData()
   }, [])
 
-  // Custom tooltip for the bar chart
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-background p-2 border rounded shadow-sm">
-          <p className="font-semibold">{label}</p>
-          <p className="text-sm text-blue-600">Revenue: ${payload[0]?.value?.toLocaleString() || 0}</p>
-          <p className="text-sm text-green-600">Profit: ${payload[1]?.value?.toLocaleString() || 0}</p>
-          <p className="text-sm">Items Sold: {payload[2]?.value || 0}</p>
-          <p className="text-sm">Category: {payload[0]?.payload?.category || "Unknown"}</p>
-        </div>
-      )
-    }
-    return null
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Top Products</CardTitle>
+          <CardDescription>Best selling products by revenue</CardDescription>
+        </CardHeader>
+        <CardContent className="h-80 flex items-center justify-center">
+          <div className="animate-pulse w-full h-full bg-gray-200 rounded-md"></div>
+        </CardContent>
+      </Card>
+    )
   }
+
+  if (error) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Top Products</CardTitle>
+          <CardDescription>Best selling products by revenue</CardDescription>
+        </CardHeader>
+        <CardContent className="h-80 flex items-center justify-center">
+          <div className="p-4 bg-red-50 rounded-md w-full">
+            <p className="text-red-500 text-center">Error: {error}</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  if (data.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Top Products</CardTitle>
+          <CardDescription>Best selling products by revenue</CardDescription>
+        </CardHeader>
+        <CardContent className="h-80 flex items-center justify-center">
+          <p className="text-muted-foreground">No sales data available</p>
+        </CardContent>
+      </Card>
+    )
+  }
+
+  // Format data for the chart
+  const chartData = data.map((item) => ({
+    name: item.productName.length > 15 ? item.productName.substring(0, 15) + "..." : item.productName,
+    revenue: item.totalRevenue,
+    profit: item.totalProfit,
+  }))
 
   return (
     <Card>
       <CardHeader>
         <CardTitle>Top Products</CardTitle>
-        <CardDescription>Best performing products by revenue</CardDescription>
+        <CardDescription>Best selling products by revenue</CardDescription>
       </CardHeader>
-      <CardContent>
-        {loading ? (
-          <div className="flex justify-center items-center h-80">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          </div>
-        ) : error ? (
-          <div className="flex justify-center items-center h-80 text-destructive">
-            <p>{error}</p>
-          </div>
-        ) : data.length === 0 ? (
-          <div className="flex justify-center items-center h-80 text-muted-foreground">
-            <p>No product data available. Try making some sales first.</p>
-          </div>
-        ) : (
-          <div className="h-80">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={data} layout="vertical" margin={{ top: 5, right: 30, left: 100, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis type="number" />
-                <YAxis type="category" dataKey="name" width={90} tick={{ fontSize: 12 }} />
-                <Tooltip content={<CustomTooltip />} />
-                <Legend />
-                <Bar dataKey="revenue" name="Revenue" fill="#2563eb" />
-                <Bar dataKey="profit" name="Profit" fill="#16a34a" />
-                <Bar dataKey="count" name="Items Sold" fill="#d97706" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        )}
+      <CardContent className="h-80">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} layout="vertical" margin={{ top: 20, right: 30, left: 40, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis type="number" />
+            <YAxis dataKey="name" type="category" width={100} />
+            <Tooltip formatter={(value) => [`$${Number(value).toFixed(2)}`, undefined]} />
+            <Legend />
+            <Bar dataKey="revenue" name="Revenue" fill="#3b82f6" />
+            <Bar dataKey="profit" name="Profit" fill="#10b981" />
+          </BarChart>
+        </ResponsiveContainer>
       </CardContent>
     </Card>
   )

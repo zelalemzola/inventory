@@ -1,84 +1,80 @@
-import { NextResponse } from "next/server"
-import dbConnect from "@/lib/db"
-import Sale from "@/models/Sale"
+import { NextResponse } from 'next/server';
+import dbConnect from '@/lib/db';
+import Sale from '@/models/Sale';
+import { successResponse, errorResponse } from '@/lib/apiResponse';
 
 export async function GET() {
   try {
-    await dbConnect()
-
+    await dbConnect();
+    
     // Get current date
-    const currentDate = new Date()
-
+    const currentDate = new Date();
+    
     // Get date 12 months ago
-    const twelveMonthsAgo = new Date()
-    twelveMonthsAgo.setMonth(currentDate.getMonth() - 11)
-    twelveMonthsAgo.setDate(1) // Start from the first day of the month
-    twelveMonthsAgo.setHours(0, 0, 0, 0)
-
-    console.log(`Fetching sales from ${twelveMonthsAgo.toISOString()} to ${currentDate.toISOString()}`)
-
-    // Get all sales in the last 12 months (both completed and pending)
+    const startDate = new Date();
+    startDate.setMonth(currentDate.getMonth() - 11);
+    startDate.setDate(1);
+    startDate.setHours(0, 0, 0, 0);
+    
+    // Get all completed sales in the last 12 months
     const sales = await Sale.find({
-      createdAt: { $gte: twelveMonthsAgo, $lte: currentDate },
-    })
-
-    console.log(`Found ${sales.length} sales in the last 12 months`)
-
+      status: 'Completed',
+      createdAt: { $gte: startDate }
+    });
+    
     // Initialize monthly data
-    const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-    const monthlyData: { month: string; revenue: number; profit: number; count: number }[] = []
-
-    // Generate all 12 months (starting from 11 months ago)
-    const startMonth = currentDate.getMonth() - 11
+    const monthlyData: { [key: string]: {
+      month: string,
+      revenue: number,
+      profit: number,
+      salesCount: number
+    }} = {};
+    
+    // Initialize all 12 months with zero values
     for (let i = 0; i < 12; i++) {
-      let monthIndex = (startMonth + i) % 12
-      if (monthIndex < 0) monthIndex += 12
-
-      monthlyData.push({
-        month: monthNames[monthIndex],
+      const date = new Date(startDate);
+      date.setMonth(startDate.getMonth() + i);
+      
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const monthName = date.toLocaleString('default', { month: 'short' });
+      
+      monthlyData[monthKey] = {
+        month: monthName,
         revenue: 0,
         profit: 0,
-        count: 0,
-      })
+        salesCount: 0
+      };
     }
-
-    // Process sales data
+    
+    // Process each sale
     for (const sale of sales) {
-      const saleDate = new Date(sale.createdAt)
-      const monthDiff =
-        (saleDate.getFullYear() - twelveMonthsAgo.getFullYear()) * 12 + saleDate.getMonth() - twelveMonthsAgo.getMonth()
-
-      if (monthDiff >= 0 && monthDiff < 12) {
-        // Add to revenue
-        monthlyData[monthDiff].revenue += sale.total || 0
-        monthlyData[monthDiff].count += 1
-
-        // Calculate profit
-        let saleProfit = 0
-
-        // Check if products exists and is an array
-        if (sale.products && Array.isArray(sale.products)) {
-          for (const item of sale.products) {
-            saleProfit += ((item.price || 0) - (item.cost || 0)) * (item.quantity || 0)
-          }
-        }
-
-        monthlyData[monthDiff].profit += saleProfit
+      const date = new Date(sale.createdAt);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      
+      if (monthlyData[monthKey]) {
+        monthlyData[monthKey].revenue += sale.totalAmount;
+        monthlyData[monthKey].profit += sale.profit;
+        monthlyData[monthKey].salesCount += 1;
       }
     }
-
-    // Round numbers
-    monthlyData.forEach((data) => {
-      data.revenue = Math.round(data.revenue * 100) / 100
-      data.profit = Math.round(data.profit * 100) / 100
-    })
-
-    console.log("Monthly data:", monthlyData)
-
-    return NextResponse.json(monthlyData)
-  } catch (error) {
-    console.error("Error fetching monthly sales:", error)
-    return NextResponse.json({ error: "Failed to fetch monthly sales" }, { status: 500 })
+    
+    // Convert to array and sort by month
+    const monthlySales = Object.values(monthlyData)
+      .sort((a, b) => {
+        const monthA = Object.keys(monthlyData).find(key => monthlyData[key] === a) || '';
+        const monthB = Object.keys(monthlyData).find(key => monthlyData[key] === b) || '';
+        return monthA.localeCompare(monthB);
+      });
+    
+    return NextResponse.json(
+      successResponse(monthlySales, 'Monthly sales retrieved successfully')
+    );
+  } catch (error: any) {
+    console.error('Error fetching monthly sales:', error);
+    return NextResponse.json(
+      errorResponse('Failed to fetch monthly sales', 500, error),
+      { status: 500 }
+    );
   }
 }
 

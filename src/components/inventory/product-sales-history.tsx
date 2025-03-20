@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { type ColumnDef, flexRender, getCoreRowModel, useReactTable } from "@tanstack/react-table"
 import axios from "axios"
-import { useToast } from "@/hooks/use-toast"
+import {toast} from 'sonner'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
@@ -25,7 +25,7 @@ export function ProductSalesHistory({ id }: ProductSalesHistoryProps) {
   const [sales, setSales] = useState<Sale[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { toast } = useToast()
+  
 
   useEffect(() => {
     const fetchSalesHistory = async () => {

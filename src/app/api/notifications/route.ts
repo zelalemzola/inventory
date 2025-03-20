@@ -1,65 +1,86 @@
-import { type NextRequest, NextResponse } from "next/server"
-import dbConnect from "@/lib/db"
-import Notification from "@/models/Notification"
+import { NextResponse } from 'next/server';
+import dbConnect from '@/lib/db';
+import Notification from '@/models/Notification';
+import { successResponse, errorResponse } from '@/lib/apiResponse';
 
-export async function GET(req: NextRequest) {
+export async function GET(request: Request) {
   try {
-    await dbConnect()
-
-    const url = new URL(req.url)
-    const searchParams = url.searchParams
-    const read = searchParams.get("read")
-    const type = searchParams.get("type")
-    const limit = Number.parseInt(searchParams.get("limit") || "100")
-    const page = Number.parseInt(searchParams.get("page") || "1")
-
-    const skip = (page - 1) * limit
-
-    // Build query
-    const query: any = {}
-
-    if (read !== null) {
-      query.read = read === "true"
-    }
-
+    await dbConnect();
+    
+    const { searchParams } = new URL(request.url);
+    const type = searchParams.get('type');
+    const isRead = searchParams.get('isRead');
+    const actionRequired = searchParams.get('actionRequired');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '10');
+    const skip = (page - 1) * limit;
+    
+    let query: any = {};
+    
     if (type) {
-      query.type = type
+      query.type = type;
     }
-
-    const notifications = await Notification.find(query).sort({ date: -1 }).skip(skip).limit(limit)
-
-    const total = await Notification.countDocuments(query)
-    const unreadCount = await Notification.countDocuments({ read: false })
-
-    return NextResponse.json({
-      notifications,
-      unreadCount,
-      pagination: {
-        total,
-        page,
-        limit,
-        pages: Math.ceil(total / limit),
-      },
-    })
-  } catch (error) {
-    console.error("Error fetching notifications:", error)
-    return NextResponse.json({ error: "Failed to fetch notifications" }, { status: 500 })
+    
+    if (isRead !== null) {
+      query.isRead = isRead === 'true';
+    }
+    
+    if (actionRequired !== null) {
+      query.actionRequired = actionRequired === 'true';
+    }
+    
+    const notifications = await Notification.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit);
+    const total = await Notification.countDocuments(query);
+    const unreadCount = await Notification.countDocuments({ isRead: false });
+    
+    return NextResponse.json(
+      successResponse({
+        notifications,
+        unreadCount,
+        pagination: {
+          total,
+          page,
+          limit,
+          pages: Math.ceil(total / limit)
+        }
+      }, 'Notifications retrieved successfully')
+    );
+  } catch (error: any) {
+    console.error('Error fetching notifications:', error);
+    return NextResponse.json(
+      errorResponse('Failed to fetch notifications', 500, error),
+      { status: 500 }
+    );
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
   try {
-    await dbConnect()
-
-    const body = await req.json()
-
-    const notification = new Notification(body)
-    await notification.save()
-
-    return NextResponse.json(notification, { status: 201 })
-  } catch (error) {
-    console.error("Error creating notification:", error)
-    return NextResponse.json({ error: "Failed to create notification" }, { status: 500 })
+    await dbConnect();
+    
+    const body = await request.json();
+    
+    // Validate required fields
+    if (!body.type || !body.title || !body.message) {
+      return NextResponse.json(
+        errorResponse('Missing required fields', 400),
+        { status: 400 }
+      );
+    }
+    
+    const newNotification = new Notification(body);
+    await newNotification.save();
+    
+    return NextResponse.json(
+      successResponse(newNotification, 'Notification created successfully'),
+      { status: 201 }
+    );
+  } catch (error: any) {
+    console.error('Error creating notification:', error);
+    return NextResponse.json(
+      errorResponse('Failed to create notification', 500, error),
+      { status: 500 }
+    );
   }
 }
 

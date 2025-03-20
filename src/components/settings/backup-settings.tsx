@@ -8,7 +8,7 @@ import { Download, Upload, Trash2, RefreshCw } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { useToast } from "@/hooks/use-toast"
+import {toast} from 'sonner'
 import { Progress } from "@/components/ui/progress"
 
 type Backup = {
@@ -23,7 +23,7 @@ export function BackupSettings() {
   const [loading, setLoading] = useState(true)
   const [backupInProgress, setBackupInProgress] = useState(false)
   const [progress, setProgress] = useState(0)
-  const { toast } = useToast()
+  
 
   useEffect(() => {
     fetchBackups()
@@ -39,11 +39,7 @@ export function BackupSettings() {
       }
     } catch (error) {
       console.error("Error fetching backups:", error)
-      toast({
-        title: "Error",
-        description: "Failed to load backup history",
-        variant: "destructive",
-      })
+      toast.error("Failed to load backup history")
     } finally {
       setLoading(false)
     }
@@ -82,11 +78,7 @@ export function BackupSettings() {
       }
     } catch (error) {
       console.error("Error creating backup:", error)
-      toast({
-        title: "Error",
-        description: "Failed to create backup",
-        variant: "destructive",
-      })
+      toast.error("Failed to create backup")
     } finally {
       setTimeout(() => {
         setBackupInProgress(false)
@@ -116,11 +108,7 @@ export function BackupSettings() {
       })
     } catch (error) {
       console.error("Error downloading backup:", error)
-      toast({
-        title: "Error",
-        description: "Failed to download backup",
-        variant: "destructive",
-      })
+      toast.error("Failed to download backup")
     }
   }
 
@@ -139,11 +127,7 @@ export function BackupSettings() {
       setBackups((prev) => prev.filter((backup) => backup.id !== id))
     } catch (error) {
       console.error("Error deleting backup:", error)
-      toast({
-        title: "Error",
-        description: "Failed to delete backup",
-        variant: "destructive",
-      })
+      toast.error("Failed to delete backup")
     }
   }
 
@@ -177,11 +161,7 @@ export function BackupSettings() {
       })
     } catch (error) {
       console.error("Error restoring backup:", error)
-      toast({
-        title: "Error",
-        description: "Failed to restore backup",
-        variant: "destructive",
-      })
+      toast.error("Failed to restore backup")
     } finally {
       setTimeout(() => {
         setBackupInProgress(false)

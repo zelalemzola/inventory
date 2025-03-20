@@ -11,7 +11,7 @@ import { RecentSales } from "@/components/dashboard/recent-sales"
 import { MainNav } from "@/components/dashboard/main-nav"
 import { UserNav } from "@/components/dashboard/user-nav"
 import { StockAlerts } from "@/components/dashboard/stock-alerts"
-import { useToast } from "@/hooks/use-toast"
+import {toast} from 'sonner'
 import { useRouter } from "next/navigation"
 import { ProfitMargin } from "@/components/dashboard/profit-margin"
 import { ProfitTracking } from "@/components/dashboard/profit-tracking"
@@ -34,7 +34,7 @@ export default function DashboardPage() {
   })
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { toast } = useToast()
+  
   const router = useRouter()
 
   useEffect(() => {
@@ -166,11 +166,7 @@ export default function DashboardPage() {
       } catch (error: any) {
         console.error("Error fetching dashboard statistics:", error)
         setError("Failed to load dashboard statistics")
-        toast({
-          title: "Error",
-          description: `Failed to load dashboard statistics: ${error.message || "Unknown error"}`,
-          variant: "destructive",
-        })
+       toast.error( `Failed to load dashboard statistics: ${error.message || "Unknown error"}`)
       } finally {
         setLoading(false)
       }

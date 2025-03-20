@@ -1,6 +1,6 @@
 "use client"
 
-import { useToast } from "@/hooks/use-toast"
+import {toast} from 'sonner'
 import {
   Toast,
   ToastClose,

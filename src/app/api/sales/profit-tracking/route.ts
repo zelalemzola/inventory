@@ -1,86 +1,88 @@
-import { type NextRequest, NextResponse } from "next/server"
-import dbConnect from "@/lib/db"
-import Sale from "@/models/Sale"
+import { NextResponse } from 'next/server';
+import dbConnect from '@/lib/db';
+import Sale from '@/models/Sale';
+import { successResponse, errorResponse } from '@/lib/apiResponse';
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    await dbConnect()
-
-    // Get query parameters
-    const { searchParams } = new URL(req.url)
-    const startDate = searchParams.get("startDate")
-    const endDate = searchParams.get("endDate")
-    const interval = searchParams.get("interval") || "month" // week, month, quarter, year
-
-    // Build date filter
-    const dateFilter: any = {}
-
-    if (startDate) {
-      dateFilter.date = { ...dateFilter.date, $gte: new Date(startDate) }
-    }
-
-    if (endDate) {
-      dateFilter.date = { ...dateFilter.date, $lte: new Date(endDate) }
-    }
-
-    // Get completed sales within date range
+    await dbConnect();
+    
+    // Get current date
+    const currentDate = new Date();
+    
+    // Get date 12 months ago
+    const startDate = new Date();
+    startDate.setMonth(currentDate.getMonth() - 11);
+    startDate.setDate(1);
+    startDate.setHours(0, 0, 0, 0);
+    
+    // Get all completed sales in the last 12 months
     const sales = await Sale.find({
-      ...dateFilter,
-      status: "Completed",
-    }).sort({ date: 1 })
-
-    // Process sales data based on interval
-    const profitByDate = new Map()
-
-    sales.forEach((sale) => {
-      let dateKey
-      const date = new Date(sale.date)
-
-      if (interval === "week") {
-        // For weekly, use day of week
-        dateKey = date.toLocaleDateString()
-      } else if (interval === "month") {
-        // For monthly, use day of month
-        dateKey = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, "0")}-${date.getDate().toString().padStart(2, "0")}`
-      } else if (interval === "quarter") {
-        // For quarterly, use week of quarter
-        const weekNumber = Math.ceil((date.getDate() + new Date(date.getFullYear(), date.getMonth(), 1).getDay()) / 7)
-        dateKey = `Week ${weekNumber}, ${date.toLocaleString("default", { month: "short" })} ${date.getFullYear()}`
-      } else {
-        // For yearly, use month
-        dateKey = date.toLocaleString("default", { month: "short" }) + " " + date.getFullYear()
+      status: 'Completed',
+      createdAt: { $gte: startDate }
+    });
+    
+    // Initialize monthly data
+    const monthlyData: { [key: string]: {
+      month: string,
+      revenue: number,
+      cost: number,
+      profit: number,
+      margin: number
+    }} = {};
+    
+    // Initialize all 12 months with zero values
+    for (let i = 0; i < 12; i++) {
+      const date = new Date(startDate);
+      date.setMonth(startDate.getMonth() + i);
+      
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      const monthName = date.toLocaleString('default', { month: 'short' });
+      
+      monthlyData[monthKey] = {
+        month: monthName,
+        revenue: 0,
+        cost: 0,
+        profit: 0,
+        margin: 0
+      };
+    }
+    
+    // Process each sale
+    for (const sale of sales) {
+      const date = new Date(sale.createdAt);
+      const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+      
+      if (monthlyData[monthKey]) {
+        monthlyData[monthKey].revenue += sale.totalAmount;
+        monthlyData[monthKey].cost += sale.totalCost;
+        monthlyData[monthKey].profit += sale.profit;
       }
-
-      if (!profitByDate.has(dateKey)) {
-        profitByDate.set(dateKey, { revenue: 0, profit: 0 })
-      }
-
-      const data = profitByDate.get(dateKey)
-      data.revenue += sale.total || 0
-      data.profit += sale.profit || 0
-    })
-
-    // Convert to array and sort by date
-    const profitData = Array.from(profitByDate.entries())
-      .map(([name, values]) => ({
-        name,
-        revenue: values.revenue,
-        profit: values.profit,
-      }))
+    }
+    
+    // Calculate profit margin for each month
+    for (const key in monthlyData) {
+      const data = monthlyData[key];
+      data.margin = data.revenue > 0 ? (data.profit / data.revenue) * 100 : 0;
+    }
+    
+    // Convert to array and sort by month
+    const profitTracking = Object.values(monthlyData)
       .sort((a, b) => {
-        // Sort based on interval
-        if (interval === "week" || interval === "month") {
-          return new Date(a.name).getTime() - new Date(b.name).getTime()
-        }
-        return a.name.localeCompare(b.name)
-      })
-
-    return NextResponse.json({
-      profitData,
-    })
-  } catch (error) {
-    console.error("Error fetching profit tracking data:", error)
-    return NextResponse.json({ error: "Failed to fetch profit tracking data" }, { status: 500 })
+        const monthA = Object.keys(monthlyData).find(key => monthlyData[key] === a) || '';
+        const monthB = Object.keys(monthlyData).find(key => monthlyData[key] === b) || '';
+        return monthA.localeCompare(monthB);
+      });
+    
+    return NextResponse.json(
+      successResponse(profitTracking, 'Profit tracking data retrieved successfully')
+    );
+  } catch (error: any) {
+    console.error('Error fetching profit tracking:', error);
+    return NextResponse.json(
+      errorResponse('Failed to fetch profit tracking', 500, error),
+      { status: 500 }
+    );
   }
 }
 

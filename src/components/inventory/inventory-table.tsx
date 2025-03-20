@@ -31,7 +31,7 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import { useToast } from "@/hooks/use-toast"
+import {toast} from 'sonner'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 type ProductVariant = {
@@ -69,7 +69,7 @@ export function InventoryTable({ filters = {} }: { filters?: Record<string, any>
   const [rowSelection, setRowSelection] = React.useState({})
   const [statusFilter, setStatusFilter] = React.useState<string>("all")
   const [categoryFilter, setCategoryFilter] = React.useState<string>("all")
-  const { toast } = useToast()
+  
   const router = useRouter()
 
   // Fetch all categories

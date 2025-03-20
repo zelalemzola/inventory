@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Check, Package, ShoppingCart, Bell, DollarSign, AlertCircle } from "lucide-react"
 import axios from "axios"
-import { useToast } from "@/hooks/use-toast"
+import {toast} from 'sonner'
 import { useRouter } from "next/navigation"
 import { useNotifications } from "@/contexts/notification-context"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
@@ -28,7 +28,7 @@ export function NotificationsList({ type }: NotificationsListProps) {
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { toast } = useToast()
+  
   const router = useRouter()
   const { refreshNotifications } = useNotifications()
 
@@ -173,11 +173,7 @@ export function NotificationsList({ type }: NotificationsListProps) {
       })
     } catch (error) {
       console.error("Error marking notification as read:", error)
-      toast({
-        title: "Error",
-        description: "Failed to mark notification as read. Please try again.",
-        variant: "destructive",
-      })
+      toast.error("Failed to mark notification as read. Please try again.")
     }
   }
 

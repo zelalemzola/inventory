@@ -1,33 +1,30 @@
-import { NextResponse } from "next/server"
-import dbConnect from "@/lib/db"
-import Sale from "@/models/Sale"
+import { NextResponse } from 'next/server';
+import dbConnect from '@/lib/db';
+import Product from '@/models/Product';
+import { successResponse, errorResponse } from '@/lib/apiResponse';
 
 export async function GET() {
   try {
-    await dbConnect()
-
-    // Get all unique product names from sales
-    const productNames = await Sale.aggregate([
-      { $unwind: "$items" },
-      { $group: { _id: "$items.productName" } },
-      { $sort: { _id: 1 } },
-      { $project: { _id: 0, name: "$_id" } },
-    ])
-
-    // Extract the product names from the result
-    const result = await Sale.aggregate([
-      { $unwind: "$items" },
-      { $group: { _id: "$items.productName" } },
-      { $sort: { _id: 1 } },
-      { $project: { _id: 0, name: "$_id" } },
-    ])
-
-    const names = result.map((item: any) => item.name)
-
-    return NextResponse.json({ names })
-  } catch (error) {
-    console.error("Error fetching product names:", error)
-    return NextResponse.json({ error: "Failed to fetch product names" }, { status: 500 })
+    await dbConnect();
+    
+    // Get all products
+    const products = await Product.find({}, 'name');
+    
+    // Format data
+    const productNames = products.map(product => ({
+      id: product._id,
+      name: product.name
+    }));
+    
+    return NextResponse.json(
+      successResponse(productNames, 'Product names retrieved successfully')
+    );
+  } catch (error: any) {
+    console.error('Error fetching product names:', error);
+    return NextResponse.json(
+      errorResponse('Failed to fetch product names', 500, error),
+      { status: 500 }
+    );
   }
 }
 

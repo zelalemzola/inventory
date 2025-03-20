@@ -12,7 +12,7 @@ import {
   YAxis,
 } from "@/components/ui/chart"
 import axios from "axios"
-import { useToast } from "@/hooks/use-toast"
+import {toast} from 'sonner'
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
 
@@ -30,7 +30,7 @@ export function ProductPriceHistory({ id }: ProductPriceHistoryProps) {
   const [data, setData] = useState<PriceHistoryItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { toast } = useToast()
+  
 
   useEffect(() => {
     const fetchPriceHistory = async () => {

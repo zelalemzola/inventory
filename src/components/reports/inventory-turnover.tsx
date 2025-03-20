@@ -1,82 +1,118 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "@/components/ui/chart"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import axios from "axios"
-import { useToast } from "@/hooks/use-toast"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertCircle } from "lucide-react"
 
-type CategoryTurnover = {
-  name: string
-  turnover: number
+interface TurnoverData {
+  productId: string
+  productName: string
+  category: string
+  inventoryValue: number
+  totalSales: number
+  turnoverRatio: number
 }
 
 export function InventoryTurnover() {
-  const [data, setData] = useState<CategoryTurnover[]>([])
-  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<TurnoverData[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { toast } = useToast()
 
   useEffect(() => {
-    const fetchInventoryTurnover = async () => {
+    const fetchData = async () => {
       try {
-        setLoading(true)
+        setIsLoading(true)
         setError(null)
 
         const response = await axios.get("/api/products/turnover")
 
-        if (response.data && response.data.turnoverByCategory) {
-          // Format the data for the chart
-          const formattedData = response.data.turnoverByCategory.map((item: any) => ({
-            name: item._id || "Uncategorized",
-            turnover: Number.parseFloat(item.turnover.toFixed(2)),
-          }))
-
-          setData(formattedData)
+        if (response.data && response.data.success && Array.isArray(response.data.data)) {
+          // Take only top 10 products by turnover ratio
+          setData(response.data.data.slice(0, 10))
         } else {
-          throw new Error("Invalid response format")
+          setError("Invalid data format received from server")
         }
-      } catch (error) {
-        console.error("Error fetching inventory turnover:", error)
-        setError("Failed to load inventory turnover data")
+      } catch (err: any) {
+        console.error("Error fetching inventory turnover:", err)
+        setError(err.message || "Failed to load inventory turnover data")
       } finally {
-        setLoading(false)
+        setIsLoading(false)
       }
     }
 
-    fetchInventoryTurnover()
-  }, [toast])
+    fetchData()
+  }, [])
 
-  if (loading) {
-    return <div className="flex items-center justify-center h-[300px]">Loading inventory turnover data...</div>
+  if (isLoading) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Inventory Turnover</CardTitle>
+          <CardDescription>How quickly products are selling relative to their inventory value</CardDescription>
+        </CardHeader>
+        <CardContent className="h-80 flex items-center justify-center">
+          <div className="animate-pulse w-full h-full bg-gray-200 rounded-md"></div>
+        </CardContent>
+      </Card>
+    )
   }
 
   if (error) {
     return (
-      <Alert variant="destructive">
-        <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Error</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
+      <Card>
+        <CardHeader>
+          <CardTitle>Inventory Turnover</CardTitle>
+          <CardDescription>How quickly products are selling relative to their inventory value</CardDescription>
+        </CardHeader>
+        <CardContent className="h-80 flex items-center justify-center">
+          <div className="p-4 bg-red-50 rounded-md w-full">
+            <p className="text-red-500 text-center">Error: {error}</p>
+          </div>
+        </CardContent>
+      </Card>
     )
   }
 
   if (data.length === 0) {
-    return <div className="flex items-center justify-center h-[300px]">No inventory turnover data available</div>
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle>Inventory Turnover</CardTitle>
+          <CardDescription>How quickly products are selling relative to their inventory value</CardDescription>
+        </CardHeader>
+        <CardContent className="h-80 flex items-center justify-center">
+          <p className="text-muted-foreground">No inventory turnover data available</p>
+        </CardContent>
+      </Card>
+    )
   }
 
+  // Format data for the chart
+  const chartData = data.map((item) => ({
+    name: item.productName.length > 15 ? item.productName.substring(0, 15) + "..." : item.productName,
+    turnover: item.turnoverRatio.toFixed(2),
+  }))
+
   return (
-    <ResponsiveContainer width="100%" height={300}>
-      <BarChart data={data}>
-        <CartesianGrid strokeDasharray="3 3" />
-        <XAxis dataKey="name" />
-        <YAxis />
-        <Tooltip formatter={(value) => [`${value}x`, "Turnover Rate"]} />
-        <Legend />
-        <Bar dataKey="turnover" fill="#8884d8" name="Inventory Turnover" />
-      </BarChart>
-    </ResponsiveContainer>
+    <Card>
+      <CardHeader>
+        <CardTitle>Inventory Turnover</CardTitle>
+        <CardDescription>How quickly products are selling relative to their inventory value</CardDescription>
+      </CardHeader>
+      <CardContent className="h-80">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={chartData} layout="vertical" margin={{ top: 20, right: 30, left: 40, bottom: 5 }}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis type="number" />
+            <YAxis dataKey="name" type="category" width={100} />
+            <Tooltip formatter={(value) => [`${value}x`, "Turnover Ratio"]} />
+            <Legend />
+            <Bar dataKey="turnover" name="Turnover Ratio" fill="#8884d8" />
+          </BarChart>
+        </ResponsiveContainer>
+      </CardContent>
+    </Card>
   )
 }
 

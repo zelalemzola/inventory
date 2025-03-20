@@ -1,84 +1,125 @@
-import { type NextRequest, NextResponse } from "next/server"
-import dbConnect from "@/lib/db"
-import Product from "@/models/Product"
-import { isValidObjectId } from "mongoose"
+import { NextResponse } from 'next/server';
+import dbConnect from '@/lib/db';
+import Product from '@/models/Product';
+import { successResponse, errorResponse } from '@/lib/apiResponse';
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
   try {
-    await dbConnect()
-
-    const id = params.id
-    if (!isValidObjectId(id)) {
-      return NextResponse.json({ error: "Invalid product ID" }, { status: 400 })
-    }
-
-    const product = await Product.findById(id)
+    await dbConnect();
+    
+    const product = await Product.findById(params.id);
+    
     if (!product) {
-      return NextResponse.json({ error: "Product not found" }, { status: 404 })
+      return NextResponse.json(
+        errorResponse('Product not found', 404),
+        { status: 404 }
+      );
     }
-
-    return NextResponse.json(product)
-  } catch (error) {
-    console.error("Error fetching product:", error)
-    return NextResponse.json({ error: "Failed to fetch product" }, { status: 500 })
+    
+    return NextResponse.json(
+      successResponse(product, 'Product retrieved successfully')
+    );
+  } catch (error: any) {
+    console.error(`Error fetching product ${params.id}:`, error);
+    return NextResponse.json(
+      errorResponse('Failed to fetch product', 500, error),
+      { status: 500 }
+    );
   }
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
   try {
-    await dbConnect()
-
-    const id = params.id
-    if (!isValidObjectId(id)) {
-      return NextResponse.json({ error: "Invalid product ID" }, { status: 400 })
-    }
-
-    const data = await req.json()
-
-    // If product has variants, calculate stock as sum of variant stocks
-    if (data.variants && data.variants.length > 0) {
-      data.stock = data.variants.reduce((total: number, variant: any) => total + (variant.stock || 0), 0)
-    }
-
-    // Update status based on stock level
-    if (data.stock <= 0) {
-      data.status = "Out of Stock"
-    } else if (data.stock <= data.minStockLevel) {
-      data.status = "Low Stock"
-    } else {
-      data.status = "In Stock"
-    }
-
-    const product = await Product.findByIdAndUpdate(id, data, { new: true, runValidators: true })
+    await dbConnect();
+    
+    const body = await request.json();
+    
+    // Find the product first
+    const product = await Product.findById(params.id);
+    
     if (!product) {
-      return NextResponse.json({ error: "Product not found" }, { status: 404 })
+      return NextResponse.json(
+        errorResponse('Product not found', 404),
+        { status: 404 }
+      );
     }
-
-    return NextResponse.json(product)
-  } catch (error) {
-    console.error("Error updating product:", error)
-    return NextResponse.json({ error: "Failed to update product" }, { status: 500 })
+    
+    // Update basic product info
+    if (body.name) product.name = body.name;
+    if (body.description) product.description = body.description;
+    if (body.category) product.category = body.category;
+    if (body.isActive !== undefined) product.isActive = body.isActive;
+    
+    // Handle variants update if provided
+    if (Array.isArray(body.variants)) {
+      // Validate each variant
+      for (const variant of body.variants) {
+        if (!variant.name || !variant.sku || variant.cost === undefined || variant.price === undefined) {
+          return NextResponse.json(
+            errorResponse('Each variant must have name, sku, cost, and price', 400),
+            { status: 400 }
+          );
+        }
+      }
+      
+      // Replace variants
+      product.variants = body.variants;
+    }
+    
+    await product.save();
+    
+    return NextResponse.json(
+      successResponse(product, 'Product updated successfully')
+    );
+  } catch (error: any) {
+    console.error(`Error updating product ${params.id}:`, error);
+    
+    // Handle duplicate SKU error
+    if (error.code === 11000) {
+      return NextResponse.json(
+        errorResponse('A variant with this SKU already exists', 400, error),
+        { status: 400 }
+      );
+    }
+    
+    return NextResponse.json(
+      errorResponse('Failed to update product', 500, error),
+      { status: 500 }
+    );
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(
+  request: Request,
+  { params }: { params: { id: string } }
+) {
   try {
-    await dbConnect()
-
-    const id = params.id
-    if (!isValidObjectId(id)) {
-      return NextResponse.json({ error: "Invalid product ID" }, { status: 400 })
-    }
-
-    const product = await Product.findByIdAndDelete(id)
+    await dbConnect();
+    
+    const product = await Product.findByIdAndDelete(params.id);
+    
     if (!product) {
-      return NextResponse.json({ error: "Product not found" }, { status: 404 })
+      return NextResponse.json(
+        errorResponse('Product not found', 404),
+        { status: 404 }
+      );
     }
-
-    return NextResponse.json({ message: "Product deleted successfully" })
-  } catch (error) {
-    console.error("Error deleting product:", error)
-    return NextResponse.json({ error: "Failed to delete product" }, { status: 500 })
+    
+    return NextResponse.json(
+      successResponse(null, 'Product deleted successfully')
+    );
+  } catch (error: any) {
+    console.error(`Error deleting product ${params.id}:`, error);
+    return NextResponse.json(
+      errorResponse('Failed to delete product', 500, error),
+      { status: 500 }
+    );
   }
 }
 

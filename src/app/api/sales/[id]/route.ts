@@ -1,128 +1,127 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import dbConnect from "@/lib/db"
 import Sale from "@/models/Sale"
 import Product from "@/models/Product"
-import { isValidObjectId } from "mongoose"
+import { successResponse, errorResponse } from "@/lib/apiResponse"
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: Request, { params }: { params: { id: string } }) {
   try {
     await dbConnect()
 
-    const id = params.id
-    if (!isValidObjectId(id)) {
-      return NextResponse.json({ error: "Invalid sale ID" }, { status: 400 })
-    }
+    const sale = await Sale.findById(params.id)
 
-    const sale = await Sale.findById(id).populate("customer", "name email")
     if (!sale) {
-      return NextResponse.json({ error: "Sale not found" }, { status: 404 })
+      return NextResponse.json(errorResponse("Sale not found", 404), { status: 404 })
     }
 
-    return NextResponse.json(sale)
-  } catch (error) {
-    console.error("Error fetching sale:", error)
-    return NextResponse.json({ error: "Failed to fetch sale" }, { status: 500 })
+    return NextResponse.json(successResponse(sale, "Sale retrieved successfully"))
+  } catch (error: any) {
+    console.error(`Error fetching sale ${params.id}:`, error)
+    return NextResponse.json(errorResponse("Failed to fetch sale", 500, error), { status: 500 })
   }
 }
 
-export async function PUT(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PUT(request: Request, { params }: { params: { id: string } }) {
   try {
     await dbConnect()
 
-    const id = params.id
-    if (!isValidObjectId(id)) {
-      return NextResponse.json({ error: "Invalid sale ID" }, { status: 400 })
+    const body = await request.json()
+
+    // Find the sale
+    const sale = await Sale.findById(params.id)
+
+    if (!sale) {
+      return NextResponse.json(errorResponse("Sale not found", 404), { status: 404 })
     }
 
-    const data = await req.json()
+    // Update only allowed fields (not items or amounts)
+    if (body.customer) sale.customer = body.customer
+    if (body.status) sale.status = body.status
+    if (body.paymentMethod) sale.paymentMethod = body.paymentMethod
+    if (body.notes !== undefined) sale.notes = body.notes
 
-    // Get the current sale to check status change
-    const currentSale = await Sale.findById(id)
-    if (!currentSale) {
-      return NextResponse.json({ error: "Sale not found" }, { status: 404 })
-    }
-
-    // Handle inventory changes if status is changing
-    if (data.status !== currentSale.status) {
-      // If changing from non-completed to completed, reduce inventory
-      if (data.status === "Completed" && currentSale.status !== "Completed") {
-        await updateInventory(currentSale.items, -1) // Reduce inventory
+    // If status is changing from Pending to Completed or vice versa, handle inventory
+    if (body.status && body.status !== sale.status) {
+      if (body.status === "Cancelled" && sale.status === "Completed") {
+        // Return items to inventory
+        await returnItemsToInventory(sale.items)
+      } else if (body.status === "Completed" && sale.status === "Cancelled") {
+        // Remove items from inventory again
+        await removeItemsFromInventory(sale.items)
       }
-
-      // If changing from completed to non-completed, restore inventory
-      if (data.status !== "Completed" && currentSale.status === "Completed") {
-        await updateInventory(currentSale.items, 1) // Restore inventory
-      }
     }
 
-    // Update the sale
-    const sale = await Sale.findByIdAndUpdate(id, data, { new: true, runValidators: true })
+    await sale.save()
 
-    return NextResponse.json(sale)
-  } catch (error) {
-    console.error("Error updating sale:", error)
-    return NextResponse.json({ error: "Failed to update sale" }, { status: 500 })
+    return NextResponse.json(successResponse(sale, "Sale updated successfully"))
+  } catch (error: any) {
+    console.error(`Error updating sale ${params.id}:`, error)
+    return NextResponse.json(errorResponse("Failed to update sale", 500, error), { status: 500 })
   }
 }
 
-export async function DELETE(req: NextRequest, { params }: { params: { id: string } }) {
+export async function DELETE(request: Request, { params }: { params: { id: string } }) {
   try {
     await dbConnect()
 
-    const id = params.id
-    if (!isValidObjectId(id)) {
-      return NextResponse.json({ error: "Invalid sale ID" }, { status: 400 })
-    }
+    const sale = await Sale.findById(params.id)
 
-    // Get the sale before deleting to check if we need to restore inventory
-    const sale = await Sale.findById(id)
     if (!sale) {
-      return NextResponse.json({ error: "Sale not found" }, { status: 404 })
+      return NextResponse.json(errorResponse("Sale not found", 404), { status: 404 })
     }
 
-    // If the sale was completed, restore inventory
+    // If the sale was completed, return items to inventory
     if (sale.status === "Completed") {
-      await updateInventory(sale.items, 1) // Restore inventory
+      await returnItemsToInventory(sale.items)
     }
 
-    // Delete the sale
-    await Sale.findByIdAndDelete(id)
+    await Sale.findByIdAndDelete(params.id)
 
-    return NextResponse.json({ message: "Sale deleted successfully" })
-  } catch (error) {
-    console.error("Error deleting sale:", error)
-    return NextResponse.json({ error: "Failed to delete sale" }, { status: 500 })
+    return NextResponse.json(successResponse(null, "Sale deleted successfully"))
+  } catch (error: any) {
+    console.error(`Error deleting sale ${params.id}:`, error)
+    return NextResponse.json(errorResponse("Failed to delete sale", 500, error), { status: 500 })
   }
 }
 
-// Helper function to update inventory
-async function updateInventory(items: any[], direction: number) {
+// Helper function to return items to inventory
+async function returnItemsToInventory(items: any[]) {
   for (const item of items) {
-    const quantity = item.quantity * direction // Positive to add, negative to subtract
+    const product = await Product.findById(item.productId)
 
-    if (item.isVariant) {
-      // Update variant stock
-      const parentProduct = await Product.findById(item.parentProductId)
-      if (parentProduct) {
-        const updatedVariants = parentProduct.variants.map((v: any) => {
-          if (v.sku === item.sku) {
-            return {
-              ...v,
-              stock: Math.max(0, v.stock + quantity),
-            }
-          }
-          return v
-        })
+    if (product) {
+      if (item.variantId) {
+        // Find the variant - using array find instead of .id()
+        // @ts-ignore - Mongoose's subdocument methods aren't recognized by TypeScript
+        const variant = product.variants.find((v) => v._id.toString() === item.variantId)
 
-        await Product.findByIdAndUpdate(item.parentProductId, {
-          variants: updatedVariants,
-        })
+        if (variant) {
+          // Return quantity to stock
+          variant.stock += item.quantity
+          await product.save()
+        }
       }
-    } else {
-      // Update regular product stock
-      await Product.findByIdAndUpdate(item.productId, {
-        $inc: { stock: quantity },
-      })
+    }
+  }
+}
+
+// Helper function to remove items from inventory
+async function removeItemsFromInventory(items: any[]) {
+  for (const item of items) {
+    const product = await Product.findById(item.productId)
+
+    if (product) {
+      if (item.variantId) {
+        // Find the variant - using array find instead of .id()
+        // @ts-ignore - Mongoose's subdocument methods aren't recognized by TypeScript
+        const variant = product.variants.find((v) => v._id.toString() === item.variantId)
+
+        if (variant) {
+          // Remove quantity from stock
+          variant.stock = Math.max(0, variant.stock - item.quantity)
+          await product.save()
+        }
+      }
     }
   }
 }

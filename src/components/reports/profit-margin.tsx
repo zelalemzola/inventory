@@ -1,9 +1,9 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "@/components/ui/chart"
+import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import axios from "axios"
-import { useToast } from "@/hooks/use-toast"
+import {toast} from 'sonner'
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
 
@@ -16,7 +16,7 @@ export function ProfitMargin() {
   const [data, setData] = useState<CategoryMargin[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { toast } = useToast()
+  
 
   useEffect(() => {
     const fetchProfitMargins = async () => {

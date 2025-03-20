@@ -1,131 +1,59 @@
-import { NextResponse } from "next/server"
-import dbConnect from "@/lib/db"
-import Sale from "@/models/Sale"
-import Product from "@/models/Product"
+import { NextResponse } from 'next/server';
+import dbConnect from '@/lib/db';
+import Sale from '@/models/Sale';
+import Product from '@/models/Product';
+import { successResponse, errorResponse } from '@/lib/apiResponse';
 
 export async function GET() {
   try {
-    await dbConnect()
-
-    console.log("Fetching top products data...")
-
-    // Get all products to have their details
-    const products = await Product.find({}, "name category")
-    const productDetails: Record<string, { name: string; category: string }> = {}
-
-    // Create a mapping of product IDs to their details
-    products.forEach((product) => {
-      productDetails[product._id.toString()] = {
-        name: product.name || "Unknown Product",
-        category: product.category || "Uncategorized",
-      }
-    })
-
-    console.log(`Found ${Object.keys(productDetails).length} products with details`)
-
+    await dbConnect();
+    
     // Get all sales
-    const sales = await Sale.find({})
-
-    console.log(`Found ${sales.length} sales records`)
-
-    // Initialize product data
-    const productData: Record<
-      string,
-      {
-        revenue: number
-        count: number
-        profit: number
-        name: string
-        category: string
-      }
-    > = {}
-
+    const sales = await Sale.find({ status: 'Completed' });
+    
+    // Create a map to track product sales
+    const productSales: { [key: string]: { 
+      productId: string,
+      productName: string,
+      category: string,
+      totalQuantity: number,
+      totalRevenue: number
+    }} = {};
+    
     // Process each sale
     for (const sale of sales) {
-      // Skip if sale has no products or products is not an array
-      if (!sale.products || !Array.isArray(sale.products) || sale.products.length === 0) {
-        console.log("Sale has no valid products array:", sale._id)
-        continue
-      }
-
-      // Process each product in the sale
-      for (const item of sale.products) {
-        try {
-          // Get the product ID
-          const productId = item.product
-            ? typeof item.product === "object"
-              ? item.product.toString()
-              : item.product.toString()
-            : null
-
-          if (!productId) {
-            console.log("Missing product ID for item:", item)
-            continue
-          }
-
-          // Get product details from our mapping or use defaults
-          const details = productDetails[productId] || {
-            name: item.name || "Unknown Product",
-            category: "Uncategorized",
-          }
-
-          // Initialize product data if it doesn't exist
-          if (!productData[productId]) {
-            productData[productId] = {
-              revenue: 0,
-              count: 0,
-              profit: 0,
-              name: details.name,
-              category: details.category,
-            }
-          }
-
-          // Calculate revenue and profit
-          const itemPrice = item.price || 0
-          const itemCost = item.cost || 0
-          const itemQuantity = item.quantity || 0
-
-          const itemRevenue = itemPrice * itemQuantity
-          const itemProfit = (itemPrice - itemCost) * itemQuantity
-
-          // Add to product revenue, count, and profit
-          productData[productId].revenue += itemRevenue
-          productData[productId].count += itemQuantity
-          productData[productId].profit += itemProfit
-
-          console.log(
-            `Added ${itemRevenue} revenue, ${itemProfit} profit, and ${itemQuantity} count to product ${details.name}`,
-          )
-        } catch (err) {
-          console.error("Error processing product:", err)
+      for (const item of sale.items) {
+        const productId = item.productId.toString();
+        
+        if (!productSales[productId]) {
+          productSales[productId] = {
+            productId,
+            productName: item.productName,
+            category: item.category,
+            totalQuantity: 0,
+            totalRevenue: 0
+          };
         }
+        
+        productSales[productId].totalQuantity += item.quantity;
+        productSales[productId].totalRevenue += item.price * item.quantity;
       }
     }
-
-    // Convert to array format for the chart
-    const result = Object.values(productData)
-      // Filter out products with zero revenue
-      .filter((data) => data.revenue > 0)
-      .map((data) => ({
-        name: data.name,
-        revenue: Math.round(data.revenue * 100) / 100,
-        count: data.count,
-        profit: Math.round(data.profit * 100) / 100,
-        category: data.category,
-      }))
-
-    // Sort by revenue (highest first)
-    result.sort((a, b) => b.revenue - a.revenue)
-
-    // Limit to top 10 products
-    const topProducts = result.slice(0, 10)
-
-    console.log("Top products results:", topProducts)
-
-    return NextResponse.json(topProducts)
-  } catch (error) {
-    console.error("Error fetching top products:", error)
-    return NextResponse.json({ error: "Failed to fetch top products" }, { status: 500 })
+    
+    // Convert to array and sort by revenue
+    const topProducts = Object.values(productSales)
+      .sort((a, b) => b.totalRevenue - a.totalRevenue)
+      .slice(0, 5);
+    
+    return NextResponse.json(
+      successResponse(topProducts, 'Top products retrieved successfully')
+    );
+  } catch (error: any) {
+    console.error('Error fetching top products:', error);
+    return NextResponse.json(
+      errorResponse('Failed to fetch top products', 500, error),
+      { status: 500 }
+    );
   }
 }
 

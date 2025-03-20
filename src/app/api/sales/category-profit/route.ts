@@ -1,106 +1,68 @@
-import { type NextRequest, NextResponse } from "next/server"
-import dbConnect from "@/lib/db"
-import Sale from "@/models/Sale"
-import Product from "@/models/Product"
+import { NextResponse } from 'next/server';
+import dbConnect from '@/lib/db';
+import Sale from '@/models/Sale';
+import { successResponse, errorResponse } from '@/lib/apiResponse';
 
-export async function GET(req: NextRequest) {
+export async function GET() {
   try {
-    await dbConnect()
-
-    // Get query parameters
-    const { searchParams } = new URL(req.url)
-    const period = searchParams.get("period") || "all"
-
-    // Calculate date range based on period
-    let dateFilter = {}
-    const now = new Date()
-
-    if (period === "today") {
-      const startOfDay = new Date(now.setHours(0, 0, 0, 0))
-      dateFilter = { date: { $gte: startOfDay } }
-    } else if (period === "week") {
-      const startOfWeek = new Date(now)
-      startOfWeek.setDate(now.getDate() - now.getDay()) // Start of week (Sunday)
-      startOfWeek.setHours(0, 0, 0, 0)
-      dateFilter = { date: { $gte: startOfWeek } }
-    } else if (period === "month") {
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-      dateFilter = { date: { $gte: startOfMonth } }
-    } else if (period === "year") {
-      const startOfYear = new Date(now.getFullYear(), 0, 1)
-      dateFilter = { date: { $gte: startOfYear } }
-    }
-
+    await dbConnect();
+    
     // Get all completed sales
-    const completedSales = await Sale.find({
-      status: "Completed",
-      ...dateFilter,
-    }).lean()
-
-    // Get all product categories
-    const categories = await Product.distinct("category")
-
-    // Initialize category profit data
-    const categoryProfitMap = new Map()
-    categories.forEach((category) => {
-      categoryProfitMap.set(category, {
-        revenue: 0,
-        cost: 0,
-        profit: 0,
-        sales: 0,
-      })
-    })
-
-    // Calculate profit by category
-    for (const sale of completedSales) {
+    const sales = await Sale.find({ status: 'Completed' });
+    
+    // Create a map to track profit by category
+    const categoryProfit: { [key: string]: { 
+      category: string,
+      revenue: number,
+      cost: number,
+      profit: number,
+      margin: number
+    }} = {};
+    
+    // Process each sale
+    for (const sale of sales) {
       for (const item of sale.items) {
-        // Get the product to determine its category
-        const product = await Product.findById(item.product).lean()
-        if (product) {
-          const category = product && "category" in product ? product.category : "Uncategorized"
-          const data = categoryProfitMap.get(category) || {
+        const category = item.category;
+        
+        if (!categoryProfit[category]) {
+          categoryProfit[category] = {
+            category,
             revenue: 0,
             cost: 0,
             profit: 0,
-            sales: 0,
-          }
-
-          const itemRevenue = item.price * item.quantity
-          const itemCost = item.cost * item.quantity
-          const itemProfit = itemRevenue - itemCost
-
-          data.revenue += itemRevenue
-          data.cost += itemCost
-          data.profit += itemProfit
-          data.sales += item.quantity
-
-          categoryProfitMap.set(category, data)
+            margin: 0
+          };
         }
+        
+        const itemRevenue = item.price * item.quantity;
+        const itemCost = item.cost * item.quantity;
+        const itemProfit = itemRevenue - itemCost;
+        
+        categoryProfit[category].revenue += itemRevenue;
+        categoryProfit[category].cost += itemCost;
+        categoryProfit[category].profit += itemProfit;
       }
     }
-
-    // Convert to array and calculate margins
-    const categoryProfit = Array.from(categoryProfitMap.entries())
-      .map(([category, data]) => {
-        const margin = data.revenue > 0 ? (data.profit / data.revenue) * 100 : 0
-        return {
-          name: category,
-          revenue: data.revenue,
-          cost: data.cost,
-          profit: data.profit,
-          sales: data.sales,
-          margin: Number.parseFloat(margin.toFixed(2)),
-        }
-      })
-      .filter((item) => item.revenue > 0) // Only include categories with sales
-      .sort((a, b) => b.profit - a.profit) // Sort by profit (highest first)
-
-    return NextResponse.json({
-      categoryProfit,
-    })
-  } catch (error) {
-    console.error("Error fetching category profit:", error)
-    return NextResponse.json({ error: "Failed to fetch category profit" }, { status: 500 })
+    
+    // Calculate profit margin for each category
+    for (const category in categoryProfit) {
+      const data = categoryProfit[category];
+      data.margin = data.revenue > 0 ? (data.profit / data.revenue) * 100 : 0;
+    }
+    
+    // Convert to array and sort by profit
+    const profitByCategory = Object.values(categoryProfit)
+      .sort((a, b) => b.profit - a.profit);
+    
+    return NextResponse.json(
+      successResponse(profitByCategory, 'Category profit data retrieved successfully')
+    );
+  } catch (error: any) {
+    console.error('Error fetching category profit:', error);
+    return NextResponse.json(
+      errorResponse('Failed to fetch category profit', 500, error),
+      { status: 500 }
+    );
   }
 }
 

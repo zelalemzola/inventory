@@ -1,226 +1,185 @@
-import { type NextRequest, NextResponse } from "next/server"
+import { NextResponse } from "next/server"
 import dbConnect from "@/lib/db"
 import Sale from "@/models/Sale"
 import Product from "@/models/Product"
-import StockHistory from "@/models/StockHistory"
 import Notification from "@/models/Notification"
-import { Types } from "mongoose"
+import { successResponse, errorResponse } from "@/lib/apiResponse"
 
-export async function GET(req: NextRequest) {
+export async function GET(request: Request) {
   try {
     await dbConnect()
 
-    const url = new URL(req.url)
-    const searchParams = url.searchParams
-    const customer = searchParams.get("customer")
-    const status = searchParams.get("status")
+    const { searchParams } = new URL(request.url)
     const startDate = searchParams.get("startDate")
     const endDate = searchParams.get("endDate")
-    const limit = Number.parseInt(searchParams.get("limit") || "100")
+    const customer = searchParams.get("customer")
     const page = Number.parseInt(searchParams.get("page") || "1")
-
+    const limit = Number.parseInt(searchParams.get("limit") || "10")
     const skip = (page - 1) * limit
 
-    // Build query
     const query: any = {}
 
-    if (customer) {
-      query.customer = { $regex: customer, $options: "i" }
-    }
-
-    if (status) {
-      query.status = status
-    }
-
+    // Date range filter
     if (startDate && endDate) {
-      query.date = {
+      query.createdAt = {
         $gte: new Date(startDate),
         $lte: new Date(endDate),
       }
     } else if (startDate) {
-      query.date = { $gte: new Date(startDate) }
+      query.createdAt = { $gte: new Date(startDate) }
     } else if (endDate) {
-      query.date = { $lte: new Date(endDate) }
+      query.createdAt = { $lte: new Date(endDate) }
     }
 
-    const sales = await Sale.find(query).sort({ date: -1 }).skip(skip).limit(limit)
+    // Customer filter
+    if (customer) {
+      query["customer.name"] = { $regex: customer, $options: "i" }
+    }
 
+    const sales = await Sale.find(query).sort({ createdAt: -1 }).skip(skip).limit(limit)
     const total = await Sale.countDocuments(query)
 
-    return NextResponse.json({
-      sales,
-      pagination: {
-        total,
-        page,
-        limit,
-        pages: Math.ceil(total / limit),
-      },
-    })
-  } catch (error) {
+    return NextResponse.json(
+      successResponse(
+        {
+          sales,
+          pagination: {
+            total,
+            page,
+            limit,
+            pages: Math.ceil(total / limit),
+          },
+        },
+        "Sales retrieved successfully",
+      ),
+    )
+  } catch (error: any) {
     console.error("Error fetching sales:", error)
-    return NextResponse.json({ error: "Failed to fetch sales" }, { status: 500 })
+    return NextResponse.json(errorResponse("Failed to fetch sales", 500, error), { status: 500 })
   }
 }
 
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
   try {
     await dbConnect()
 
-    const data = await req.json()
-    const { items, status, ...saleData } = data
+    const body = await request.json()
 
-    // Create the sale record with initial values
-    const sale = new Sale({
-      ...saleData,
-      status: status || "Pending", // Default to Pending if not specified
-      items: [],
-      profit: 0,
-    })
+    // Validate required fields
+    if (!body.customer || !body.customer.name || !Array.isArray(body.items) || body.items.length === 0) {
+      return NextResponse.json(errorResponse("Missing required fields", 400), { status: 400 })
+    }
 
-    const processedItems = []
-    let subtotal = 0
+    // Process each item and update product stock
+    for (let i = 0; i < body.items.length; i++) {
+      const item = body.items[i]
 
-    // Process each item in the sale
-    for (const item of items) {
-      const productId = item.product
-      const variantName = item.variant
-      const quantity = item.quantity
-
-      // Find the product
-      const product = await Product.findById(productId)
-      if (!product) {
-        return NextResponse.json({ error: `Product with ID ${productId} not found` }, { status: 404 })
+      if (!item.productId || !item.quantity) {
+        return NextResponse.json(errorResponse(`Item at index ${i} is missing required fields`, 400), { status: 400 })
       }
 
-      let itemTotal = 0
-      let itemCost = 0
-      const stockToUpdate = true // Always update stock regardless of status
+      // Find the product
+      const product = await Product.findById(item.productId)
+      if (!product) {
+        return NextResponse.json(errorResponse(`Product with ID ${item.productId} not found`, 404), { status: 404 })
+      }
 
-      // Process variant or main product
-      if (variantName) {
-        // Find the variant
-        const variantIndex = product.variants.findIndex((v: any) => v.name === variantName)
-        if (variantIndex === -1) {
+      // If variant is specified, handle variant
+      if (item.variantId) {
+        // Find the variant - using array find instead of .id()
+        // @ts-ignore - Mongoose's subdocument methods aren't recognized by TypeScript
+        const variant = product.variants.find((v) => v._id.toString() === item.variantId)
+
+        if (!variant) {
           return NextResponse.json(
-            { error: `Variant ${variantName} not found for product ${product.name}` },
+            errorResponse(`Variant with ID ${item.variantId} not found in product ${product.name}`, 404),
             { status: 404 },
           )
         }
 
-        const variant = product.variants[variantIndex]
-
-        if (variant.stock < quantity) {
+        // Check stock
+        if (variant.stock < item.quantity) {
           return NextResponse.json(
-            { error: `Not enough stock for ${product.name} (${variant.name}). Available: ${variant.stock}` },
+            errorResponse(`Not enough stock for ${product.name} - ${variant.name}. Available: ${variant.stock}`, 400),
             { status: 400 },
           )
         }
 
-        // Always update stock regardless of status
-        const previousStock = variant.stock
-        variant.stock -= quantity
-
-        // Create stock history record
-        await StockHistory.create({
-          product: productId,
-          previousStock,
-          newStock: variant.stock,
-          change: -quantity,
-          type: "Sale",
-          notes: `Sale ID: ${sale._id} (${status})`,
-        })
-
-        product.variants[variantIndex] = variant
-
-        // Calculate item total and cost
-        itemTotal = item.price * quantity
-        itemCost = variant.cost * quantity
-        subtotal += itemTotal
-
-        processedItems.push({
-          product: new Types.ObjectId(productId),
+        // Update item with product details
+        body.items[i] = {
+          ...item,
           productName: product.name,
-          variant: variantName,
-          sku: variant.sku,
-          quantity: item.quantity,
-          price: item.price,
+          variantName: variant.name,
           cost: variant.cost,
-          total: itemTotal,
-        })
-      } else {
-        // Main product
-        if (product.stock < quantity) {
-          return NextResponse.json(
-            { error: `Not enough stock for ${product.name}. Available: ${product.stock}` },
-            { status: 400 },
-          )
+          price: variant.price,
+          category: product.category,
         }
 
-        // Always update stock regardless of status
-        const previousStock = product.stock
-        product.stock -= quantity
+        // Update stock
+        variant.stock -= item.quantity
 
-        // Create stock history record
-        await StockHistory.create({
-          product: productId,
-          previousStock,
-          newStock: product.stock,
-          change: -quantity,
-          type: "Sale",
-          notes: `Sale ID: ${sale._id} (${status})`,
-        })
-
-        // Calculate item total and cost
-        itemTotal = item.price * quantity
-        itemCost = product.cost * quantity
-        subtotal += itemTotal
-
-        processedItems.push({
-          product: new Types.ObjectId(productId),
-          productName: product.name,
-          sku: product.sku,
-          quantity: item.quantity,
-          price: item.price,
-          cost: product.cost,
-          total: itemTotal,
+        // Create low stock notification if needed
+        if (variant.stock <= variant.minStockThreshold) {
+          await Notification.create({
+            type: "low_stock",
+            title: "Low Stock Alert",
+            message: `${product.name} - ${variant.name} is running low (${variant.stock} remaining)`,
+            productId: product._id,
+            variantId: variant._id,
+            actionRequired: true,
+            actionTaken: false,
+            isRead: false,
+          })
+        }
+      } else {
+        // Handle product without variant (should not happen with your new model, but just in case)
+        return NextResponse.json(errorResponse(`Variant ID is required for product ${product.name}`, 400), {
+          status: 400,
         })
       }
 
-      // Save product if stock was updated
-      if (stockToUpdate) {
-        await product.save()
-      }
+      await product.save()
     }
 
-    // Calculate profit for all sales (both pending and completed)
-    const profit = processedItems.reduce((total, item) => {
-      return total + (item.price * item.quantity - item.cost * item.quantity)
-    }, 0)
+    // Calculate totals
+    let subtotal = 0
+    let totalCost = 0
 
-    // Update sale with processed items and calculations
-    sale.items = processedItems
-    sale.subtotal = subtotal
-    sale.tax = 0 // No tax as requested
-    sale.total = subtotal
-    sale.profit = profit
+    for (const item of body.items) {
+      subtotal += item.price * item.quantity
+      totalCost += item.cost * item.quantity
+    }
 
-    await sale.save()
-
-    // Create notification based on status
-    await Notification.create({
-      type: "Sale",
-      title: status === "Completed" ? "New Sale Completed" : "New Pending Sale",
-      message: `A new ${status.toLowerCase()} sale of $${subtotal.toFixed(2)} has been ${
-        status === "Completed" ? "completed" : "created"
-      }.`,
-      date: new Date(),
-      read: false,
+    // Create the sale
+    const newSale = new Sale({
+      customer: body.customer,
+      items: body.items,
+      subtotal,
+      tax: body.tax || 0,
+      totalAmount: subtotal + (body.tax || 0),
+      totalCost,
+      profit: subtotal - totalCost,
+      paymentMethod: body.paymentMethod,
+      status: body.status || "Pending",
+      notes: body.notes,
     })
 
-    return NextResponse.json({ success: true, sale }, { status: 201 })
-  } catch (error) {
+    await newSale.save()
+
+    // Create notification for new sale
+    await Notification.create({
+      type: "sale",
+      title: "New Sale Created",
+      message: `A new sale of $${subtotal.toFixed(2)} has been created`,
+      isRead: false,
+      actionRequired: false,
+      actionTaken: false,
+    })
+
+    return NextResponse.json(successResponse(newSale, "Sale created successfully"), { status: 201 })
+  } catch (error: any) {
     console.error("Error creating sale:", error)
-    return NextResponse.json({ error: "Failed to create sale" }, { status: 500 })
+    return NextResponse.json(errorResponse("Failed to create sale", 500, error), { status: 500 })
   }
 }
 

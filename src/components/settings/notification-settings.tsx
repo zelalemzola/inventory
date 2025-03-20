@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
-import { useToast } from "@/hooks/use-toast"
+import {toast} from 'sonner'
 
 const formSchema = z.object({
   stockAlerts: z.boolean(),
@@ -30,7 +30,7 @@ const formSchema = z.object({
 
 export function NotificationSettings() {
   const [loading, setLoading] = useState(true)
-  const { toast } = useToast()
+  
   const router = useRouter()
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -59,11 +59,7 @@ export function NotificationSettings() {
         }
       } catch (error) {
         console.error("Error fetching notification settings:", error)
-        toast({
-          title: "Error",
-          description: "Failed to load notification settings",
-          variant: "destructive",
-        })
+       toast.error( "Failed to load notification settings")
       } finally {
         setLoading(false)
       }
@@ -82,11 +78,7 @@ export function NotificationSettings() {
       })
     } catch (error) {
       console.error("Error saving notification settings:", error)
-      toast({
-        title: "Error",
-        description: "Failed to save notification settings",
-        variant: "destructive",
-      })
+      toast.error("Failed to save notification settings")
     }
   }
 

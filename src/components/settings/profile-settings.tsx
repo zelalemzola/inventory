@@ -14,7 +14,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { useToast } from "@/hooks/use-toast"
+import {toast} from 'sonner'
 
 const formSchema = z.object({
   name: z.string().min(2, {
@@ -31,7 +31,7 @@ const formSchema = z.object({
 export function ProfileSettings() {
   const [loading, setLoading] = useState(true)
   const [avatarUrl, setAvatarUrl] = useState("/placeholder-user.jpg")
-  const { toast } = useToast()
+  
   const router = useRouter()
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -62,11 +62,7 @@ export function ProfileSettings() {
         }
       } catch (error) {
         console.error("Error fetching profile:", error)
-        toast({
-          title: "Error",
-          description: "Failed to load profile data",
-          variant: "destructive",
-        })
+       toast.error( "Failed to load profile data")
       } finally {
         setLoading(false)
       }
@@ -85,11 +81,7 @@ export function ProfileSettings() {
       })
     } catch (error) {
       console.error("Error updating profile:", error)
-      toast({
-        title: "Error",
-        description: "Failed to update profile",
-        variant: "destructive",
-      })
+      toast.error("Failed to update profile")
     }
   }
 
@@ -99,21 +91,13 @@ export function ProfileSettings() {
 
     // Check file size (max 2MB)
     if (file.size > 2 * 1024 * 1024) {
-      toast({
-        title: "Error",
-        description: "File size must be less than 2MB",
-        variant: "destructive",
-      })
+      toast.error("File size must be less than 2MB")
       return
     }
 
     // Check file type
     if (!["image/jpeg", "image/png", "image/gif"].includes(file.type)) {
-      toast({
-        title: "Error",
-        description: "File must be JPG, PNG, or GIF",
-        variant: "destructive",
-      })
+      toast.error("File must be JPG, PNG, or GIF")
       return
     }
 
@@ -137,11 +121,7 @@ export function ProfileSettings() {
       }
     } catch (error) {
       console.error("Error uploading avatar:", error)
-      toast({
-        title: "Error",
-        description: "Failed to upload avatar",
-        variant: "destructive",
-      })
+      toast.error("Failed to upload avatar")
     }
   }
 

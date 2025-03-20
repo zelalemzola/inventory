@@ -1,86 +1,91 @@
-import mongoose, { Schema, type Document } from "mongoose"
+import mongoose, { Schema, type Document, Model } from "mongoose"
 
+// Interface for product variants
 export interface IProductVariant {
-  name: string
-  sku: string
-  price: number
-  cost: number
-  stock: number
-  minStockLevel?: number
+  _id?: mongoose.Types.ObjectId;
+  name: string;
+  sku: string;
+  price: number;
+  cost: number;
+  stock: number;
+  minStockThreshold: number;
 }
 
+// Interface for the product document
 export interface IProduct extends Document {
-  name: string
-  description: string
-  category: string
-  sku: string
-  price: number
-  cost: number
-  stock: number
-  minStockLevel: number
-  status: string
-  variants?: IProductVariant[]
-  createdAt: Date
-  updatedAt: Date
+  name: string;
+  description: string;
+  category: string;
+  isActive: boolean;
+  variants: IProductVariant[];
+  createdAt: Date;
+  updatedAt: Date;
+  
+  // Virtual properties
+  totalStock: number;
+  totalValue: number;
+  averageCost: number;
+  averagePrice: number;
+  hasLowStock: boolean;
 }
 
+// Schema for product variants
 const ProductVariantSchema = new Schema<IProductVariant>({
   name: { type: String, required: true },
   sku: { type: String, required: true },
-  price: { type: Number, required: true },
-  cost: { type: Number, required: true },
-  stock: { type: Number, required: true, default: 0 },
-  minStockLevel: { type: Number, default: 5 },
-})
+  price: { type: Number, required: true, min: 0 },
+  cost: { type: Number, required: true, min: 0 },
+  stock: { type: Number, required: true, default: 0, min: 0 },
+  minStockThreshold: { type: Number, required: true, default: 5, min: 0 }
+}, { _id: true });
 
-const ProductSchema = new Schema<IProduct>(
-  {
-    name: { type: String, required: true },
-    description: { type: String, default: "" },
-    category: { type: String, required: true },
-    sku: { type: String, required: true, unique: true },
-    price: { type: Number, required: true },
-    cost: { type: Number, required: true },
-    stock: { type: Number, required: true, default: 0 },
-    minStockLevel: { type: Number, default: 5 },
-    status: {
-      type: String,
-      enum: ["In Stock", "Low Stock", "Out of Stock"],
-      default: "In Stock",
-    },
-    variants: [ProductVariantSchema],
-  },
-  { timestamps: true },
-)
+// Schema for products
+const ProductSchema = new Schema<IProduct>({
+  name: { type: String, required: true },
+  description: { type: String, default: "" },
+  category: { type: String, required: true },
+  isActive: { type: Boolean, default: true },
+  variants: [ProductVariantSchema]
+}, { 
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
 
-// Pre-save middleware to update stock and status based on variants
-ProductSchema.pre("save", function (next) {
-  // If this product has variants, calculate the total stock from variants
-  if (this.variants && this.variants.length > 0) {
-    // Sum up the stock of all variants
-    this.stock = this.variants.reduce((total, variant) => total + variant.stock, 0)
+// Virtual for total stock (sum of all variant stocks)
+ProductSchema.virtual('totalStock').get(function(this: IProduct) {
+  if (!this.variants || this.variants.length === 0) return 0;
+  return this.variants.reduce((sum, variant) => sum + variant.stock, 0);
+});
 
-    // Update status based on the calculated stock
-    if (this.stock <= 0) {
-      this.status = "Out of Stock"
-    } else if (this.stock <= this.minStockLevel) {
-      this.status = "Low Stock"
-    } else {
-      this.status = "In Stock"
-    }
-  } else {
-    // For products without variants, update status based on the product's stock
-    if (this.stock <= 0) {
-      this.status = "Out of Stock"
-    } else if (this.stock <= this.minStockLevel) {
-      this.status = "Low Stock"
-    } else {
-      this.status = "In Stock"
-    }
-  }
+// Virtual for total inventory value (sum of variant stock * cost)
+ProductSchema.virtual('totalValue').get(function(this: IProduct) {
+  if (!this.variants || this.variants.length === 0) return 0;
+  return this.variants.reduce((sum, variant) => sum + (variant.stock * variant.cost), 0);
+});
 
-  next()
-})
+// Virtual for average cost across all variants
+ProductSchema.virtual('averageCost').get(function(this: IProduct) {
+  if (!this.variants || this.variants.length === 0) return 0;
+  const totalCost = this.variants.reduce((sum, variant) => sum + variant.cost, 0);
+  return totalCost / this.variants.length;
+});
 
-export default mongoose.models.Product || mongoose.model<IProduct>("Product", ProductSchema)
+// Virtual for average price across all variants
+ProductSchema.virtual('averagePrice').get(function(this: IProduct) {
+  if (!this.variants || this.variants.length === 0) return 0;
+  const totalPrice = this.variants.reduce((sum, variant) => sum + variant.price, 0);
+  return totalPrice / this.variants.length;
+});
+
+// Virtual to check if any variant has low stock
+ProductSchema.virtual('hasLowStock').get(function(this: IProduct) {
+  if (!this.variants || this.variants.length === 0) return false;
+  return this.variants.some(variant => variant.stock <= variant.minStockThreshold);
+});
+
+// Create and export the model
+const Product: Model<IProduct> = mongoose.models.Product || mongoose.model<IProduct>("Product", ProductSchema);
+
+export default Product;
 

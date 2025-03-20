@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import axios from "axios"
 import { useRouter } from "next/navigation"
-import { useToast } from "@/hooks/use-toast"
+import {toast} from 'sonner'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
@@ -28,7 +28,7 @@ export function SaleDetails({ id }: SaleDetailsProps) {
   const [sale, setSale] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { toast } = useToast()
+  
 
   const [isUpdating, setIsUpdating] = useState(false)
   const router = useRouter()

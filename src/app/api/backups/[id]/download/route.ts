@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server"
 import dbConnect from "@/lib/db"
 
-export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(req: NextRequest, { params }:any) {
   try {
     await dbConnect()
 

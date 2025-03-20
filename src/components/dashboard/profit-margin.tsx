@@ -1,84 +1,80 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Bar, BarChart, CartesianGrid, Legend, ResponsiveContainer, Tooltip, XAxis, YAxis } from "@/components/ui/chart"
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts"
 import axios from "axios"
-import { useToast } from "@/hooks/use-toast"
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
-import { AlertCircle } from "lucide-react"
-
-type CategoryProfit = {
-  name: string
-  margin: number
-  sales: number
-}
 
 export function ProfitMargin() {
-  const [data, setData] = useState<CategoryProfit[]>([])
-  const [loading, setLoading] = useState(true)
+  const [data, setData] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const { toast } = useToast()
 
   useEffect(() => {
-    const fetchCategoryProfitData = async () => {
+    const fetchData = async () => {
       try {
-        setLoading(true)
+        setIsLoading(true)
         setError(null)
 
         const response = await axios.get("/api/sales/category-profit")
 
-        if (response.data && response.data.categoryProfit) {
-          setData(response.data.categoryProfit)
+        if (response.data && response.data.success && Array.isArray(response.data.data)) {
+          // Format the data for the chart
+          const formattedData = response.data.data.map((item: any) => ({
+            name: item.category,
+            margin: (item.profitMargin * 100).toFixed(1),
+          }))
+
+          setData(formattedData)
         } else {
-          throw new Error("Invalid response format")
+          setError("Invalid data format received from server")
         }
-      } catch (error) {
-        console.error("Error fetching category profit data:", error)
-        setError("Failed to load category profit data")
-        toast({
-          title: "Error",
-          description: "Failed to load category profit data",
-          variant: "destructive",
-        })
+      } catch (err: any) {
+        console.error("Error fetching profit margin data:", err)
+        setError(err.message || "Failed to load profit margin data")
       } finally {
-        setLoading(false)
+        setIsLoading(false)
       }
     }
 
-    fetchCategoryProfitData()
-  }, [toast])
+    fetchData()
+  }, [])
 
-  const formatNumber = (num: number) => {
-    return new Intl.NumberFormat("en-US").format(num)
-  }
-
-  if (loading) {
-    return <div className="flex items-center justify-center h-[350px]">Loading category profit data...</div>
+  if (isLoading) {
+    return (
+      <div className="h-[300px] w-full flex items-center justify-center bg-gray-100 rounded-md animate-pulse">
+        <p className="text-muted-foreground">Loading chart data...</p>
+      </div>
+    )
   }
 
   if (error) {
     return (
-      <Alert variant="destructive">
-        <AlertCircle className="h-4 w-4" />
-        <AlertTitle>Error</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
-      </Alert>
+      <div className="h-[300px] w-full flex items-center justify-center bg-red-50 rounded-md">
+        <p className="text-red-500">Error: {error}</p>
+      </div>
     )
   }
 
   if (data.length === 0) {
-    return <div className="flex items-center justify-center h-[350px]">No category profit data available</div>
+    return (
+      <div className="h-[300px] w-full flex items-center justify-center bg-gray-50 rounded-md">
+        <p className="text-muted-foreground">No data available for the chart</p>
+      </div>
+    )
   }
 
   return (
     <ResponsiveContainer width="100%" height={350}>
-      <BarChart data={data}>
+      <BarChart data={data} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="name" />
-        <YAxis tickFormatter={(value) => `${value}%`} />
-        <Tooltip formatter={(value) => [`${value}%`, "Profit Margin"]} />
+        <YAxis unit="%" />
+        <Tooltip
+          formatter={(value) => [`${value}%`, "Profit Margin"]}
+          labelFormatter={(label) => `Category: ${label}`}
+        />
         <Legend />
-        <Bar dataKey="margin" fill="#8884d8" name="Profit Margin (%)" />
+        <Bar dataKey="margin" name="Profit Margin %" fill="#10b981" />
       </BarChart>
     </ResponsiveContainer>
   )

@@ -31,7 +31,7 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import Link from "next/link"
-import { useToast } from "@/hooks/use-toast"
+import {toast} from 'sonner'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 
 type Sale = {
@@ -159,7 +159,7 @@ export const columns: ColumnDef<Sale>[] = [
     cell: ({ row }) => {
       const sale = row.original
       const router = useRouter()
-      const { toast } = useToast()
+      
 
       const handleCancelSale = async () => {
         if (!confirm("Are you sure you want to cancel this sale?")) return
@@ -239,7 +239,7 @@ export function SalesTable({ filters = {} }: SalesTableProps) {
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>({})
   const [rowSelection, setRowSelection] = React.useState({})
   const [statusFilter, setStatusFilter] = React.useState<string>("all")
-  const { toast } = useToast()
+  
   const router = useRouter()
 
   React.useEffect(() => {

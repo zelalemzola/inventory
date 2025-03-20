@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { useToast } from "@/hooks/use-toast"
+import {toast} from 'sonner'
 import axios from "axios"
 import { Edit, ShoppingCart } from "lucide-react"
 import Image from "next/image"
@@ -18,7 +18,7 @@ type ProductDetailsProps = {
 export function ProductDetails({ id }: ProductDetailsProps) {
   const [product, setProduct] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const { toast } = useToast()
+  
   const router = useRouter()
 
   useEffect(() => {
@@ -28,11 +28,7 @@ export function ProductDetails({ id }: ProductDetailsProps) {
         const response = await axios.get(`/api/products/${id}`)
         setProduct(response.data)
       } catch (error) {
-        toast({
-          title: "Error",
-          description: "Failed to fetch product details. Please try again.",
-          variant: "destructive",
-        })
+       toast.error( "Failed to fetch product details. Please try again.")
       } finally {
         setLoading(false)
       }
@@ -60,11 +56,7 @@ export function ProductDetails({ id }: ProductDetailsProps) {
       const response = await axios.get(`/api/products/${id}`)
       setProduct(response.data)
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to restock product. Please try again.",
-        variant: "destructive",
-      })
+      toast.error("Failed to restock product. Please try again.")
     }
   }
 
@@ -228,7 +220,7 @@ export function ProductDetails({ id }: ProductDetailsProps) {
 function PriceHistoryList({ productId }: { productId: string }) {
   const [priceHistory, setPriceHistory] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const { toast } = useToast()
+  
 
   useEffect(() => {
     const fetchPriceHistory = async () => {
@@ -237,11 +229,7 @@ function PriceHistoryList({ productId }: { productId: string }) {
         const response = await axios.get(`/api/price-history?product=${productId}`)
         setPriceHistory(response.data.priceHistory)
       } catch (error) {
-        toast({
-          title: "Error",
-          description: "Failed to fetch price history. Please try again.",
-          variant: "destructive",
-        })
+       toast.error( "Failed to fetch price history. Please try again.")
       } finally {
         setLoading(false)
       }
@@ -292,7 +280,7 @@ function PriceHistoryList({ productId }: { productId: string }) {
 function StockHistoryList({ productId }: { productId: string }) {
   const [stockHistory, setStockHistory] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
-  const { toast } = useToast()
+  
 
   useEffect(() => {
     const fetchStockHistory = async () => {
@@ -301,11 +289,7 @@ function StockHistoryList({ productId }: { productId: string }) {
         const response = await axios.get(`/api/stock-history?product=${productId}`)
         setStockHistory(response.data.stockHistory)
       } catch (error) {
-        toast({
-          title: "Error",
-          description: "Failed to fetch stock history. Please try again.",
-          variant: "destructive",
-        })
+       toast.error( "Failed to fetch stock history. Please try again.")
       } finally {
         setLoading(false)
       }
